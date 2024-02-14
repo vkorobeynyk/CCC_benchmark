@@ -124,14 +124,14 @@ for(dataset in datasets)
   # fitler original avelogcpm counts to contain same genes as the inflated count matrices
   original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$counts %>% rownames))
   
-  diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype))
-  diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype)[1])
   #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                           FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,4,8)], dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype))
+  #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype))
   #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                             FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,4,8)], dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype)[1:2])
+  #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype)[1])
+  diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+                                                             FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,4,8)], dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype))
+  diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+                                                               FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,4,8)], dataset = dataset, cell_metadata = metadata_file , CT_toPlot = unique(metadata_file$Celltype)[1])
   
 }
 
@@ -269,11 +269,7 @@ for(dataset in datasets)
       geom_line() + 
       ggtitle(paste("FC =" , fc, "dataset" , dataset)) + facet_grid(~metric) #+ geom_label_repel(aes(label = method) ,nudge_x= 0.25, segment.size= 0.2)
     
-    
-    p3 = plot_variability(data , "averaged_precision", FC = T)
-    p4 = plot_variability(data , "averaged_recall", FC = T)
-    
-    lst_valueVSpce[[paste0("FC_",fc)]] = ggarrange(p1,p2,p3,p4,ncol = 2, nrow = 2)
+    lst_valueVSpce[[paste0("FC_",fc)]] = ggarrange(p1,p2, common.legend = T)
   }
   
   # Fixed % cells expressing
@@ -288,10 +284,7 @@ for(dataset in datasets)
       geom_line() + 
       ggtitle(paste("PCE =" , pce, "dataset" , dataset)) + facet_grid(~metric) #+ geom_label_repel(aes(label = method) ,nudge_x= 0.25, segment.size= 0.2)
     
-    p3 = plot_variability(data , "averaged_precision", FC = F)
-    p4 = plot_variability(data , "averaged_recall", FC = F)
-    
-    lst_valueVSfc[[paste0("PCE",pce)]] = ggarrange(p1,p2,p3,p4,ncol = 2, nrow = 2)
+    lst_valueVSfc[[paste0("PCE",pce)]] = ggarrange(p1,p2, common.legend = T)
   }
   
   
@@ -302,39 +295,3 @@ for(dataset in datasets)
   lst_valueVSfc %>% print
   dev.off()
 }
-
-#plot_df = do.call(rbind,averaged_statistics_results_lst)
-#plot_df_recallprecision_plot = do.call(rbind,averaged_statistics_results_lst_recallprecision_plot)
-
-
-# recall vs precision plot -> FACET PCE
-#plot_df_recallprecision_plot$PCE = as.factor(plot_df_recallprecision_plot$PCE)
-#plot_df_recallprecision_plot$FC = as.factor(plot_df_recallprecision_plot$FC)
-#ggplot(plot_df_recallprecision_plot, aes(y = averaged_precision, x = averaged_recall , color = method)) + geom_point() + 
-  #scale_size_manual(values = factor(plot_df_recallprecision_plot$FC), limits = factor(plot_df_recallprecision_plot$FC)) +
-  #scale_size(range = c(1,3.5)) + 
-#  facet_grid(~PCE) + geom_text_repel(aes(label = plot_df_recallprecision_plot$FC),
-#                                     size = 3.5) 
-
-# recall vs precision plot -> FACET FC
-#ggplot(plot_df_recallprecision_plot, aes(y = averaged_precision, x = averaged_recall , color = method)) + geom_point() + 
-  #scale_size_manual(values = factor(plot_df_recallprecision_plot$FC), limits = factor(plot_df_recallprecision_plot$FC)) +
-  #scale_size(range = c(1,3.5)) + 
-#  facet_grid(~FC) + geom_text_repel(aes(label = plot_df_recallprecision_plot$PCE),
-#                                     size = 3.5) 
-
-# Heatmap
-#col_fun = colorRamp2(c(-2, 0, 2), c("green", "white", "red"))
-#col_fun(seq(-3, 3))
-#mat = cbind(averaged_recall = plot_df_recallprecision_plot$averaged_recall,
-#            averaged_precision = plot_df_recallprecision_plot$averaged_precision)
-            
-#FC = plot_df_recallprecision_plot$FC,
-#            PCE = plot_df_recallprecision_plot$PCE)
-#ComplexHeatmap::Heatmap(mat, name = "mat", col = col_fun)
-
-#dim(mat)
-#Heatmap(mat, name = "mat",
-#        top_annotation = HeatmapAnnotation(foo1 = 1:2),
-#        right_annotation = rowAnnotation(foo2 = 16:1, bar2 = plot_df_recallprecision_plot$FC)
-#)

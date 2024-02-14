@@ -59,18 +59,16 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
 }
 
 
-plot_variability = function(data, metric_plot, FC) {
+plot_variability = function(data, metric_plot, FC, color_range) {
   data = filter(data,metric == metric_plot)
   data$lower = data$value - data$value_sd
   data$upper = data$value + data$value_sd
   data$variability_range = data$upper-data$lower 
   
   # symmetric color range
-  color_range = c(min(data$variability_range), max(data$variability_range))
   if(FC)
   {
-    p = 
-      ggplot(data) +
+    p = ggplot(data) +
       geom_point(aes(x=PCE,y=method, color=variability_range) , size = 3) +
       # limits should be the same, using divergent palette for ease of seeing when 
       # interval contains 0
@@ -80,8 +78,7 @@ plot_variability = function(data, metric_plot, FC) {
     
     return(p)
   } else {
-    p = 
-      ggplot(data) +
+    p = ggplot(data) +
       geom_point(aes(x=FC,y=method, color=variability_range) , size = 3) +
       # limits should be the same, using divergent palette for ease of seeing when 
       # interval contains 0
