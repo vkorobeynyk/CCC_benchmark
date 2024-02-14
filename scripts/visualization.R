@@ -1,0 +1,312 @@
+# Load package
+library(dplyr)
+library(optparse)
+library(ggplot2)
+library(jsonlite)
+library(ggpubr)
+library(stringr)
+library(edgeR)
+library(ggrepel)
+library(reshape2)
+library(cetcolor)
+source("scripts/helper_functions.R")
+
+# Get list with command line arguments by name
+option_list = list(
+  make_option(c("--config.yaml"), type="character", default=NULL, help="config file", metavar="character"),
+  make_option(c("--path_output_dir"), type="character", default=NULL, help="path to output directory", metavar="character"),
+  make_option(c("--path_results_dir"), type="character", default=NULL, help="path to where to save the results", metavar="character")
+);
+
+
+opt_parser = OptionParser(option_list=option_list);
+opt = parse_args(opt_parser);
+
+# An useful error if the argument is missing
+if (is.null(opt$config.yaml) | is.null(opt$path_output_dir) | is.null(opt$path_results_dir)){
+  print_help(opt_parser)
+  stop("Argument_name needs to be specified, but is missing.n", call.=FALSE)
+}
+
+# Call the argument
+path_config.yaml <- opt$config.yaml
+path_output_dir <- opt$path_output_dir
+path_results_dir <- opt$path_results_dir
+dir.create(path_results_dir)
+
+########################################
+##### Loading and processing files #####
+########################################
+
+config = yaml::read_yaml(path_config.yaml)
+
+# Setting parameters
+methods = config$methods %>% unlist
+datasets = config$datasets %>% unlist
+FC = config$semiSimulation$FC %>% unlist %>% as.double
+PCE = config$semiSimulation$perc_cells_expressing %>% unlist %>% as.integer
+
+#methods = methods[1:2]
+#datasets = datasets[1:2]
+#FC = FC[1:2]
+#PCE = PCE[1:2]
+############################
+##### Diagnostic plots #####
+############################
+
+diagnostic_plots_lst = list()
+diagnostic_plots_perCT= list()
+for(dataset in datasets)
+{
+  
+  # load files
+  file_path = file.path(path_output_dir,paste0(dataset,"_semiSimulation_NB"))
+  inflated_counts_files = file_path %>% list.files(., pattern = "sc_inflated_counts")
+  original_counts = read.table(file.path("data/",dataset, "raw_counts.tsv"))  # load original counts and transform to avelogcpm
+  rownames(original_counts) = rownames(original_counts) %>% toupper()
+  PCE_files = file_path %>% list.files(., pattern = "cells_sampled_perCTCT")
+  metadata_files = file_path %>% list.files(., pattern = "metadata")
+  simulated_interactions_files = file_path %>% list.files(., pattern = "simulated_interactions")
+  
+  # list to save all data
+  master_lst_diagnosticPlots = list()
+  
+  # load metadata files
+  # as the metadata files are the same -> load 1st one
+  metadata_file = read.table(file.path("data/",dataset, "raw_metadata.tsv"))
+  metadata_file$Celltype = gsub(" ", ".", metadata_file$Celltype)
+  
+  # generate the grid of parameters used for naming the list to generate outputs
+  params_grid = expand.grid(vector1 = FC,
+              vector2 = PCE)
+  
+  # iterate over the grid of parameters
+  for(i in 1:nrow(params_grid))
+  {
+    x = params_grid[i,]
+    
+    naming = paste0("FC_",x[1],"_PCE_",x[2])
+    
+    # load counts
+    counts_file = inflated_counts_files[grepl(paste0("^" , x[1] , "$"), str_split(inflated_counts_files, "_") %>% lapply(., "[[", 5)) & grepl(paste0("^" , x[2] , ".tsv$"), str_split(inflated_counts_files, "_") %>% lapply(., "[[", 7))]
+    master_lst_diagnosticPlots[[naming]][["counts"]] = read.table(file.path(file_path,counts_file))
+    gene_names = rownames(master_lst_diagnosticPlots[[naming]][["counts"]])
+    master_lst_diagnosticPlots[[naming]][["counts"]] = aveLogCPM(master_lst_diagnosticPlots[[naming]][["counts"]])
+    names(master_lst_diagnosticPlots[[naming]][["counts"]]) = gene_names
+    
+    # load simulated interactions
+    simulated_interactions_file = simulated_interactions_files[grepl(paste0("^" , x[1] , "$"), str_split(simulated_interactions_files, "_") %>% lapply(., "[[", 4)) & grepl(paste0("^" , x[2] , ".RDS$"), str_split(simulated_interactions_files, "_") %>% lapply(., "[[", 6))]
+    master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] = readRDS(file.path(file_path,simulated_interactions_file))
+    
+    ########################################
+    ##### Generate L/R inflated per CT #####
+    ########################################
+    # metadata originally is not 
+    CT_present = which(unique(metadata_file$Celltype) %in% (names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_") %>% lapply(.,"[[",1) %>% unlist %>% unique))
+    for(CT in unique(metadata_file$Celltype)[CT_present])
+    {
+      # Find Ligand genes which were inflated in specified celltype inflated 
+      n = which(names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_") %>% lapply(.,"[[",1) %>% unlist %in% CT)
+      L_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% lapply("[[", 1) %>% unlist
+      L_genes_inflated_per_CT_to_keep = L_genes_inflated_per_CT_to_keep[!grepl("subunit", L_genes_inflated_per_CT_to_keep)] # remove subunit string
+      
+      # Find Receptor genes which were inflated in specified celltype inflated 
+      n = which(names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_") %>% lapply(.,"[[",2) %>% unlist %in% CT)
+      R_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% lapply("[[", 2) %>% unlist
+      R_genes_inflated_per_CT_to_keep = R_genes_inflated_per_CT_to_keep[!grepl("subunit", R_genes_inflated_per_CT_to_keep)] # remove subunit string
+      
+      # Save inflated genes per CT
+      master_lst_diagnosticPlots[[naming]][[CT]] = list(L = L_genes_inflated_per_CT_to_keep %>% unique , R = R_genes_inflated_per_CT_to_keep %>% unique)
+    }
+    
+    # load PCE information
+    PCE_file = PCE_files[grepl(paste0("^" , x[1] , "$"), str_split(PCE_files, "_") %>% lapply(., "[[", 5)) & grepl(paste0("^" , x[2] , ".RDS$"), str_split(PCE_files, "_") %>% lapply(., "[[", 7))]
+    master_lst_diagnosticPlots[[naming]][["PCE"]] = readRDS(file.path(file_path,PCE_file)) %>% unlist * 100 # transform to percentage
+  }
+  # fitler original avelogcpm counts to contain same genes as the inflated count matrices
+  original_counts_aveLogCPM = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$counts %>% names)) %>% aveLogCPM()
+  
+  diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(original_counts_aveLogCPM = original_counts_aveLogCPM, master_lst = master_lst_diagnosticPlots, 
+                                                             FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,4,8)], dataset = dataset, CT_toPlot = unique(metadata_file$Celltype))
+  diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(original_counts_aveLogCPM = original_counts_aveLogCPM, master_lst = master_lst_diagnosticPlots, 
+                                                             FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,4,8)], dataset = dataset, CT_toPlot = unique(metadata_file$Celltype)[1:2])
+}
+
+
+############################### Diagnostic plots
+for(dataset in datasets)
+{
+  pdf(file.path(path_results_dir ,paste0(dataset, "_diagnostic_plots.pdf")), width = 12, height = 7)
+  do.call(ggarrange,diagnostic_plots_lst[[dataset]]$avelogcpm_fixedPCE) %>% print
+  do.call(ggarrange,diagnostic_plots_lst[[dataset]]$PCE_fixedPCE) %>% print
+  do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$avelogcpm_fixedPCE) %>% print
+  do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$PCE_fixedPCE) %>% print
+  dev.off()
+}
+
+##################################
+##### precision/recall plots #####
+##################################
+
+# plot TPR/sensitivity/recall
+averaged_statistics_results_lst = list()
+averaged_statistics_results_lst_recallprecision_plot = list()
+master_lst_precision_recall = list()
+for(dataset in datasets)
+{
+  for(method in methods)
+  {
+    averaged_statistics_files = file.path(path_output_dir,dataset,"metrics/",method) %>%
+      list.files(., pattern = "averaged_statistics")
+    master_lst_precision_recall = list()
+    for(file in averaged_statistics_files)
+    {
+      master_lst_precision_recall[[file]] = read.csv((file.path(path_output_dir,dataset,"metrics/",method,file))) %>% unlist
+      master_lst_precision_recall[[file]] = master_lst_precision_recall[[file]][c(1,2,4,5)] # remove the f1score
+      
+    }
+    # Generate data for plots isolation FC/PCE 
+    x1 = melt(do.call(rbind,master_lst_precision_recall)[,c(1,2)])
+    colnames(x1) =  c("name", "metric" , "value")
+    x2 = melt(do.call(rbind,master_lst_precision_recall)[,c(3,4)])
+    colnames(x2) =  c("name", "metric_sd" , "value_sd")
+    averaged_statistics_results_lst[[dataset]][[method]] = cbind(x1,x2)
+    averaged_statistics_results_lst[[dataset]][[method]] = averaged_statistics_results_lst[[dataset]][[method]][,c(1,2,3,5,6)] # remove extra name column
+    
+    # Add FC and PCE columns
+    x = averaged_statistics_results_lst[[dataset]][[method]]$name %>% stringr::str_split("_")
+    tmp_FC = lapply(x, "[[" , 5) %>% unlist %>% as.double
+    PCE = lapply(x, "[[" , 7) %>% unlist %>% as.double
+    
+    averaged_statistics_results_lst[[dataset]][[method]]$FC = tmp_FC
+    averaged_statistics_results_lst[[dataset]][[method]]$PCE = PCE
+    averaged_statistics_results_lst[[dataset]][[method]]$method = method
+    
+    # Generate data for precision vs recall plots
+    averaged_statistics_results_lst_recallprecision_plot[[dataset]][[method]] = do.call(rbind,master_lst_precision_recall) %>% as.data.frame
+    
+    # Add FC and PCE columns
+    x = rownames(averaged_statistics_results_lst_recallprecision_plot[[dataset]][[method]]) %>% stringr::str_split("_")
+    tmp_FC = lapply(x, "[[" , 5) %>% unlist %>% as.double
+    PCE = lapply(x, "[[" , 7) %>% unlist %>% as.double
+    
+    averaged_statistics_results_lst_recallprecision_plot[[dataset]][[method]]$FC = tmp_FC
+    averaged_statistics_results_lst_recallprecision_plot[[dataset]][[method]]$PCE = PCE
+    averaged_statistics_results_lst_recallprecision_plot[[dataset]][[method]]$method = method
+  }
+  
+  tmp = do.call(rbind, averaged_statistics_results_lst[[dataset]])
+  tmp$dataset = dataset
+  averaged_statistics_results_lst[[dataset]] = tmp
+  
+  tmp = do.call(rbind, averaged_statistics_results_lst_recallprecision_plot[[dataset]])
+  tmp$dataset = dataset
+  averaged_statistics_results_lst_recallprecision_plot[[dataset]] = tmp
+  
+  
+  ##########################################
+  ##### Generate Precision recall plot #####
+  ##########################################
+  
+  
+  # recall vs precision plot -> FACET PCE
+  PCE = as.factor(averaged_statistics_results_lst_recallprecision_plot[[dataset]]$PCE)
+  FC = as.factor(averaged_statistics_results_lst_recallprecision_plot[[dataset]]$FC)
+  
+  
+  plt1 = ggplot(averaged_statistics_results_lst_recallprecision_plot[[dataset]], aes(y = averaged_precision, x = averaged_recall , color = method)) + geom_point() + 
+    facet_grid(~PCE) + 
+    geom_text_repel(aes(label = FC), size = 3) + ggtitle("Facet grid by PCE") +
+    scale_x_continuous(labels = scales::number_format(accuracy = 0.1)) +
+    scale_y_continuous(labels = scales::number_format(accuracy = 0.01))
+  
+  # recall vs precision plot -> FACET FC
+  plt2 = ggplot(averaged_statistics_results_lst_recallprecision_plot[[dataset]], aes(y = averaged_precision, x = averaged_recall , color = method)) + geom_point() + 
+    facet_grid(~FC) + 
+    geom_text_repel(aes(label = PCE), size = 3) + ggtitle("Facet grid by FC") + 
+    scale_x_continuous(labels = scales::number_format(accuracy = 0.1)) +
+    scale_y_continuous(labels = scales::number_format(accuracy = 0.01))
+  
+  # Fixed FC
+  lst1 = list()
+  for(fc in unique(FC) %>% sort)
+  {
+    data = filter(averaged_statistics_results_lst[[dataset]], FC == fc)
+    p1 = ggplot(filter(data, metric == "averaged_precision"), aes(y = value, x = PCE , color = method)) + 
+      geom_line() + 
+      ggtitle(paste("FC =" , fc, "dataset" , dataset)) + facet_grid(~metric) #  + 
+      # geom_label_repel(aes(label = method) ,nudge_x= 0.25, segment.size= 0.2, max.overlaps = 30) + guides(color= guide_legend(override.aes = aes(label = "")))
+    
+    p2 = ggplot(filter(data, metric == "averaged_recall"), aes(y = value, x = PCE , color = method)) + 
+      geom_line() + 
+      ggtitle(paste("FC =" , fc, "dataset" , dataset)) + facet_grid(~metric) #+ geom_label_repel(aes(label = method) ,nudge_x= 0.25, segment.size= 0.2)
+    
+    
+    p3 = plot_error(data , "averaged_precision", FC = T)
+    p4 = plot_error(data , "averaged_recall", FC = T)
+    
+    lst1[[paste0("FC_",fc)]] = ggarrange(p1,p2,p3,p4,ncol = 2, nrow = 2)
+  }
+  
+  # Fixed % cells expressing
+  lst2 = list()
+  for(pce in unique(PCE) %>% sort)
+  {
+    data = filter(averaged_statistics_results_lst[[dataset]], PCE == pce)
+    p1 = ggplot(filter(data, metric == "averaged_precision"), aes(y = value, x = FC , color = method)) + 
+      geom_line() + 
+      ggtitle(paste("PCE =" , pce, "dataset" , dataset)) + facet_grid(~metric) #+ geom_label_repel(aes(label = method) ,nudge_x= 0.25, segment.size= 0.2)
+    p2 = ggplot(filter(data, metric == "averaged_recall"), aes(y = value, x = FC , color = method)) + 
+      geom_line() + 
+      ggtitle(paste("PCE =" , pce, "dataset" , dataset)) + facet_grid(~metric) #+ geom_label_repel(aes(label = method) ,nudge_x= 0.25, segment.size= 0.2)
+    
+    p3 = plot_error(data , "averaged_precision", FC = F)
+    p4 = plot_error(data , "averaged_recall", FC = F)
+    
+    lst2[[paste0("PCE",pce)]] = ggarrange(p1,p2,p3,p4,ncol = 2, nrow = 2)
+  }
+  
+  
+  pdf(file.path(path_results_dir ,paste0(dataset, "_recall_precision_plots.pdf")), width = 12, height = 7)
+  plt1 %>% print
+  plt2 %>% print
+  lst1 %>% print
+  lst2 %>% print
+  dev.off()
+}
+
+#plot_df = do.call(rbind,averaged_statistics_results_lst)
+#plot_df_recallprecision_plot = do.call(rbind,averaged_statistics_results_lst_recallprecision_plot)
+
+
+# recall vs precision plot -> FACET PCE
+#plot_df_recallprecision_plot$PCE = as.factor(plot_df_recallprecision_plot$PCE)
+#plot_df_recallprecision_plot$FC = as.factor(plot_df_recallprecision_plot$FC)
+#ggplot(plot_df_recallprecision_plot, aes(y = averaged_precision, x = averaged_recall , color = method)) + geom_point() + 
+  #scale_size_manual(values = factor(plot_df_recallprecision_plot$FC), limits = factor(plot_df_recallprecision_plot$FC)) +
+  #scale_size(range = c(1,3.5)) + 
+#  facet_grid(~PCE) + geom_text_repel(aes(label = plot_df_recallprecision_plot$FC),
+#                                     size = 3.5) 
+
+# recall vs precision plot -> FACET FC
+#ggplot(plot_df_recallprecision_plot, aes(y = averaged_precision, x = averaged_recall , color = method)) + geom_point() + 
+  #scale_size_manual(values = factor(plot_df_recallprecision_plot$FC), limits = factor(plot_df_recallprecision_plot$FC)) +
+  #scale_size(range = c(1,3.5)) + 
+#  facet_grid(~FC) + geom_text_repel(aes(label = plot_df_recallprecision_plot$PCE),
+#                                     size = 3.5) 
+
+# Heatmap
+#col_fun = colorRamp2(c(-2, 0, 2), c("green", "white", "red"))
+#col_fun(seq(-3, 3))
+#mat = cbind(averaged_recall = plot_df_recallprecision_plot$averaged_recall,
+#            averaged_precision = plot_df_recallprecision_plot$averaged_precision)
+            
+#FC = plot_df_recallprecision_plot$FC,
+#            PCE = plot_df_recallprecision_plot$PCE)
+#ComplexHeatmap::Heatmap(mat, name = "mat", col = col_fun)
+
+#dim(mat)
+#Heatmap(mat, name = "mat",
+#        top_annotation = HeatmapAnnotation(foo1 = 1:2),
+#        right_annotation = rowAnnotation(foo2 = 16:1, bar2 = plot_df_recallprecision_plot$FC)
+#)
