@@ -58,7 +58,7 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
   return(list = list(avelogcpm_fixedPCE = plot_avelogcpm_fixed_PCE , PCE_fixedPCE = plot_corr_fixed_PCE_cells_expressing))
 }
 
-
+# currently not used
 plot_variability = function(data, metric_plot, FC, color_range) {
   data = filter(data,metric == metric_plot)
   data$lower = data$value - data$value_sd
@@ -75,8 +75,6 @@ plot_variability = function(data, metric_plot, FC, color_range) {
       scale_color_gradientn(colors=cetcolor::cet_pal(7, 'd1a'), limits=color_range) +
       theme_bw() +
       ggtitle(paste0("variability of ", metric_plot)) 
-    
-    return(p)
   } else {
     p = ggplot(data) +
       geom_point(aes(x=FC,y=method, color=variability_range) , size = 3) +
@@ -85,8 +83,6 @@ plot_variability = function(data, metric_plot, FC, color_range) {
       scale_color_gradientn(colors=cetcolor::cet_pal(7, 'd1a'), limits=color_range) +
       theme_bw() +
       ggtitle(paste0("variability of ", metric_plot)) 
-    
-    return(p)
   }
-  
+  return(p)
 }

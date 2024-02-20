@@ -175,7 +175,9 @@ for(comb_CT in combination_CT)
   CT_sender = tmp_var1[1]
   CT_receiver = tmp_var1[2]
 
-  L_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",1) %>% as.character
+  L_sample = simulated_interactions_lst[[
+    
+  ]] %>% str_split("_") %>% lapply(.,"[[",1) %>% as.character
   R_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",2) %>% as.character
   
   # remove subunit string from the L and R vectors
@@ -216,27 +218,6 @@ for(comb_CT in combination_CT)
     }
   }
 } 
-
-'
-########################### Original way to inflate expression
-# select cells belonging to CT
-CT_cells = colnames(counts)[which(metadata$Celltype == CT)]
-# only select specific percentage of cells to increase expression
-cells_to_impute = sample(CT_cells, (length(CT_cells) * perc_cells_expressing / 100) %>% ceiling)
-# Iterate over every gene (L/R) depending on the CT and inflate expression
-for(gene in genes_to_sample)
-{
-  gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  rownames(means_perCT)) , which(CT == colnames(means_perCT))]
-  gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
-  mu = gene_mean * FC
-  x1 = rnbinom(length(cells_to_impute), mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
-  
-  # Add the final expression to sampled zero cells
-  counts_inflated[gene ,cells_to_impute] = x1
-  # save the % of cells expressing the gene
-  perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] =  table(counts_inflated[gene ,CT_cells]>0)["TRUE"] / length(counts_inflated[gene ,CT_cells])
-  if(is.na(perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]])) {perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] = 0}
-'
 
 ################
 # save results #
