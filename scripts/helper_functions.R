@@ -1,4 +1,63 @@
-compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, dataset, cell_metadata , CT_toPlot)
+# Semi-simulation framework
+# one can semi-simulate several combinations of CT-CT pairs
+semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  metadata , combination_CT, pce)
+{
+  perc_cells_expressing_lst = list()
+  counts_inflated = counts
+  
+  for(comb_CT in combination_CT)
+  {
+    tmp_var1 = str_split(comb_CT,"_")[[1]]
+    CT_sender = tmp_var1[1]
+    CT_receiver = tmp_var1[2]
+    
+    L_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",1) %>% as.character
+    R_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",2) %>% as.character
+    
+    # remove subunit string from the L and R vectors
+    L_sample = L_sample[which(!L_sample %in% "subunit")]
+    R_sample = R_sample[which(!R_sample %in% "subunit")]
+    
+    # iterate over cell type combination
+    for(tmp_CT in c("CTsender","CTreceiver"))  
+    {
+      if (tmp_CT == "CTsender" ) {genes_to_sample = L_sample ; CT = CT_sender
+      } else if (tmp_CT == "CTreceiver") {genes_to_sample = R_sample ; CT = CT_receiver}
+      
+      # select cells belonging to CT
+      CT_cells = colnames(counts)[which(metadata$Celltype == CT)]
+      # only select specific percentage of cells to increase expression
+      cells_to_impute = sample(CT_cells, (length(CT_cells) * pce / 100) %>% ceiling)
+      # Iterate over every gene (L/R) depending on the CT and inflate expression
+      for(gene in genes_to_sample)
+      {
+        # set all the expression for this celltype to 0
+        counts_inflated[gene ,CT_cells] = 0
+        
+        gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  rownames(means_perCT)) , which(CT == colnames(means_perCT))]
+        # there are some genes that are not expressed at all in this CT -> take the mean estimated expression
+        if(gene_mean < 0.001) {gene_mean = means_perCT[gene,] %>% mean}
+        
+        gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
+        mu = gene_mean * FC
+        x1 = rnbinom(50000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
+        x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)
+        
+        # Add the final expression to sampled zero cells
+        counts_inflated[gene ,cells_to_impute] = x1
+        # save the % of cells expressing the gene
+        perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] =  table(counts_inflated[gene ,CT_cells]>0)["TRUE"] / length(counts_inflated[gene ,CT_cells])
+        if(is.na(perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]])) {perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] = 0}
+        
+      }
+    }
+  } 
+  
+  return(list(counts_inflated = counts_inflated , perc_cells_expressing_lst = perc_cells_expressing_lst))
+}
+
+
+compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, dataset, metadata , CT_toPlot)
 {
   plot_avelogcpm_fixed_PCE = list()
   plot_avelogcpm_fixed_FC= list()
@@ -6,8 +65,8 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
   plot_corr_fixed_FC = list()
   
   # selects cells belonging to the celltype indicated by CT_toPlot
-  original_counts = original_counts[,cell_metadata$Celltype %in% CT_toPlot]
-  original_counts_aveLogCPM = aveLogCPM(original_counts)
+  counts = counts[,metadata$Celltype %in% CT_toPlot]
+  original_counts_aveLogCPM = aveLogCPM(counts)
   
   #######################################
   ### Plot AveLogCPM having PCE fixed ###
@@ -31,11 +90,11 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
       genes_to_plot = genes_to_plot %>% unlist %>% unique
       
       # filter the inflated counts based to contain cells belonging to the celltype indicated by CT_toPlot
-      master_lst[[x]][["counts"]] = master_lst[[x]][["counts"]][,cell_metadata$Celltype %in% CT_toPlot]
-      counts_aveLogCPM = aveLogCPM(master_lst[[x]][["counts"]])
+      tmp_counts = master_lst[[x]][["counts"]][,metadata$Celltype %in% CT_toPlot]
+      counts_aveLogCPM = aveLogCPM(tmp_counts)
       
       current_FC = str_split( x,"_") %>% lapply(., "[[", 2) %>% unlist
-      df = data.frame(original_counts = original_counts_aveLogCPM , avelogcpm = counts_aveLogCPM, is_LR =  rownames(master_lst[[x]][["counts"]]) %in% genes_to_plot)
+      df = data.frame(original_counts = original_counts_aveLogCPM , avelogcpm = counts_aveLogCPM, is_LR =  rownames(tmp_counts) %in% genes_to_plot)
       plot = ggplot(df,aes(x = original_counts , y = avelogcpm , color = is_LR)) + 
         geom_point(size = 0.5) + 
         ggtitle(paste0("PCE = " ,PCE , " dataset = ",dataset, " CT = ",paste(CT_toPlot, collapse = " "))) +

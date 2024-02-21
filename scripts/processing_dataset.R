@@ -30,8 +30,8 @@ if(!any("Celltype" == colnames(metadata)) | !any("cell_ID" == colnames(metadata)
 }
 
 # change cell names to remove point
-colnames(counts) = gsub("[.]","_" , colnames(counts))
-metadata$cell_ID = gsub("[-]","_" , metadata$cell_ID)
+colnames(counts) = gsub("[.-]","_" , colnames(counts))
+metadata$cell_ID = gsub("[.-]","_" , metadata$cell_ID)
 
 metadata$Celltype = gsub(" ","." , metadata$Celltype)
 
@@ -83,6 +83,6 @@ write.table(counts, counts_processed_path , sep = "\t")
 write.table(metadata, metadata_processed_path , sep = "\t")
 saveRDS(gene_metadata, gene_metadata_path)
 set.seed(1)
-write.table(sample(table(metadata$Celltype),4) %>% names, target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 4 celltypes
+write.table(table(metadata$Celltype)[c(1,2)] %>% names, target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
 
 sessionInfo()

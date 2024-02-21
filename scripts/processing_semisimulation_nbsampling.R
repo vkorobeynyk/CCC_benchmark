@@ -2,26 +2,31 @@ library(dplyr)
 library(stringr)
 library(liana)
 library(magrittr)
+source("scripts/helper_functions.R")
 
 # An useful error if the argument is missing
 if (is.null(snakemake@input[["counts_processed"]]) | is.null(snakemake@input[["metadata_processed"]]) | is.null(snakemake@input[["gene_metadata"]]) | is.null(snakemake@input[["target_ct_file"]]) | 
     is.null(snakemake@params[["nLR_per_CTCTcomb"]]) | is.null(snakemake@wildcards[["FC"]]) | is.null(snakemake@wildcards[["perc_cells_expressing"]]) | 
-    is.null(snakemake@output[["sc_inflated_counts"]]) | is.null(snakemake@output[["simulated_interactions"]])  | is.null(snakemake@output[["sc_metadata"]])  | is.null(snakemake@output[["cells_sampled_perCTCT"]])){
+    is.null(snakemake@output[["sc_inflated_counts"]]) | is.null(snakemake@output[["simulated_interactions"]])  | is.null(snakemake@output[["sc_metadata"]])  | is.null(snakemake@output[["perc_cells_expressing_perGene"]])){
   stop("Argument_name needs to be specified, but is missing.n", call.=FALSE)
 }
+# OUTPUT FILES
+path_sc_inflated_counts <- snakemake@output[["sc_inflated_counts"]]
+path_sc_metadata <- snakemake@output[["sc_metadata"]]
+path_perc_cells_expressing_perGene <- snakemake@output[["perc_cells_expressing_perGene"]]
+path_simulated_interactions <- snakemake@output[["simulated_interactions"]]
 
-# Read the argument
-path_sc_inflated_counts <- snakemake@input[["sc_inflated_counts"]]
-path_sc_metadata <- snakemake@input[["sc_metadata"]]
-path_significant_interactions <- snakemake@output[["significant_interactions"]]
-path_simulated_interactions <- snakemake@input[["simulated_interactions"]]
 
-
-# Call the argument
+# INPUT FILES
 counts_processed_path <- snakemake@input[["counts_processed"]]
 metadata_processed_path <- snakemake@input[["metadata_processed"]]
 gene_metadata_path <- snakemake@input[["gene_metadata"]]
 target_ct_file_path <- snakemake@input[["target_ct_file"]]
+
+##################
+# Set parameters #
+##################
+
 nLR_per_CTCTcomb <- snakemake@params[["nLR_per_CTCTcomb"]]
 FC <- as.double(snakemake@wildcards[["FC"]])
 perc_cells_expressing <- as.integer(snakemake@wildcards[["perc_cells_expressing"]])
@@ -32,13 +37,6 @@ sc_inflated_counts_path <- snakemake@output[["sc_inflated_counts"]]
 simulated_interactions_path <- snakemake@output[["simulated_interactions"]]
 sc_metadata_path <- snakemake@output[["sc_metadata"]]
 cells_sampled_perCTCT_path <- snakemake@output[["cells_sampled_perCTCT"]]
-
-##################
-# Set parameters #
-##################
-
-nLR_per_CTCTcomb = nLR_per_CTCTcomb # LR pairs for each CT/CT combination
-FC = FC # extent of count inflation (FC 2 = 2* mu)
 
 #############
 # read data #
@@ -54,15 +52,15 @@ means_perCT = genemetadata$mean
 rownames(means_perCT) = rownames(means_perCT) %>% toupper
 target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
 
-#counts = read.table("/home/vkorob/Documents/snakemake_CCC/benchmark_CCC_sc/data/processed/VASAseq/counts_VASAseq_processed.tsv")
+#counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/counts_VASAseq_processed.tsv")
 #rownames(counts) = toupper(rownames(counts))
-#metadata = read.table("/home/vkorob/Documents/snakemake_CCC/benchmark_CCC_sc/data/processed/VASAseq/metadata_VASAseq_processed.tsv")
+#metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/metadata_VASAseq_processed.tsv")
 #rownames(metadata) = metadata$cell_ID
-#genemetadata = readRDS("/home/vkorob/Documents/snakemake_CCC/benchmark_CCC_sc/data/processed/VASAseq/gene_metadata.tsv")
+#genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/gene_metadata.tsv")
 #rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
 #means_perCT = genemetadata$mean
 #rownames(means_perCT) = rownames(means_perCT) %>% toupper
-#target_ct = read.table("/home/vkorob/Documents/snakemake_CCC/benchmark_CCC_sc/data/processed/VASAseq//target_ct_file.tsv") %>% unlist %>% as.character
+#target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq//target_ct_file.tsv") %>% unlist %>% as.character
 
 
 # check if cell names of counts and metadata correspond and are in the same order
@@ -98,9 +96,9 @@ message(paste("After filtering LR database," , nrow(LRdb) , "LR pairs show expre
 # Inflate gene expression #
 ###########################
 set.seed(3)
-combination_CT = expand.grid(target_ct,target_ct)
-combination_CT = paste0(combination_CT$Var1, "_", combination_CT$Var2)
-
+#combination_CT = expand.grid(target_ct,target_ct)
+#combination_CT = paste0(combination_CT$Var1, "_", combination_CT$Var2)
+combination_CT = str_flatten(target_ct,"_")
 simulated_interactions_lst = list()
 
 tmp_LRdb = LRdb
@@ -163,70 +161,16 @@ for(comb_CT in combination_CT)
   simulated_interactions_lst[[comb_CT]] = simulated_interactions_lst[[comb_CT]][!duplicated(simulated_interactions_lst[[comb_CT]])]
 }
 
-# Inflate expression of pre-sampled genes and in the respective CTs
-inflated_LR_counts_lst = list()
-perc_cells_expressing_lst = list()
-counts_inflated = counts
-rownames(LRdb) = LRdb$L_R
-
-for(comb_CT in combination_CT)
-{
-  tmp_var1 = str_split(comb_CT,"_")[[1]]
-  CT_sender = tmp_var1[1]
-  CT_receiver = tmp_var1[2]
-
-  L_sample = simulated_interactions_lst[[
-    
-  ]] %>% str_split("_") %>% lapply(.,"[[",1) %>% as.character
-  R_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",2) %>% as.character
-  
-  # remove subunit string from the L and R vectors
-  L_sample = L_sample[which(!L_sample %in% "subunit")]
-  R_sample = R_sample[which(!R_sample %in% "subunit")]
-
-    # iterate over cell type combination
-  for(tmp_CT in c("CTsender","CTreceiver"))  
-  {
-    if (tmp_CT == "CTsender" ) {genes_to_sample = L_sample ; CT = CT_sender
-    } else if (tmp_CT == "CTreceiver") {genes_to_sample = R_sample ; CT = CT_receiver}
-    
-    # select cells belonging to CT
-    CT_cells = colnames(counts)[which(metadata$Celltype == CT)]
-    # only select specific percentage of cells to increase expression
-    cells_to_impute = sample(CT_cells, (length(CT_cells) * perc_cells_expressing / 100) %>% ceiling)
-    # Iterate over every gene (L/R) depending on the CT and inflate expression
-    for(gene in genes_to_sample)
-    {
-      # set all the expression for this celltype to 0
-      counts_inflated[gene ,CT_cells] = 0
-      
-      gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  rownames(means_perCT)) , which(CT == colnames(means_perCT))]
-      # there are some genes that are not expressed at all in this CT -> take the mean estimated expression
-      if(gene_mean < 0.001) {gene_mean = means_perCT[gene,] %>% mean}
-      
-      gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
-      mu = gene_mean * FC
-      x1 = rnbinom(50000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
-      x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)
-      
-      # Add the final expression to sampled zero cells
-      counts_inflated[gene ,cells_to_impute] = x1
-      # save the % of cells expressing the gene
-      perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] =  table(counts_inflated[gene ,CT_cells]>0)["TRUE"] / length(counts_inflated[gene ,CT_cells])
-      if(is.na(perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]])) {perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] = 0}
-    
-    }
-  }
-} 
+# Semi simulation
+semi_simulation_out = semi_simulate(counts = counts, simulated_interactions_lst = simulated_interactions_lst , genemetadata = genemetadata,  metadata = metadata , combination_CT = combination_CT, pce = perc_cells_expressing)
 
 ################
 # save results #
 ################
 
-write.table(counts_inflated, sc_inflated_counts_path , sep = "\t")
+write.table(semi_simulation_out$counts_inflated, sc_inflated_counts_path , sep = "\t")
 write.table(metadata,sc_metadata_path, sep = "\t")
-saveRDS(simulated_interactions_lst,simulated_interactions_path)
-saveRDS(perc_cells_expressing_lst,cells_sampled_perCTCT_path)
-
+saveRDS(simulated_interactions_lst,path_simulated_interactions)
+saveRDS(semi_simulation_out$perc_cells_expressing_lst,path_perc_cells_expressing_perGene)
 
 sessionInfo()

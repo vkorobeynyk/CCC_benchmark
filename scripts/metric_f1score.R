@@ -3,16 +3,16 @@ library(dplyr)
 library(jsonlite)
 
 # An useful error if the argument is missing
-if (is.null(snakemake@input[["significant_interactions"]]) | is.null(snakemake@input[["simulated_interactions"]]) | is.null(snakemake@output[["averaged_statistics"]]) | is.null(snakemake@output[["CT_statistics"]]) ){
+if (is.null(snakemake@input[["significant_interactions"]]) | is.null(snakemake@input[["simulated_interactions"]]) | is.null(snakemake@output[["CT_statistics"]]) ){
   stop("Argument_name needs to be specified, but is missing.n", call.=FALSE)
 }
 
-# Read the argument
-path_significant_interactions <- snakemake@input[["significant_interactions"]]
-path_simulated_interactions <- snakemake@input[["simulated_interactions"]]
-path_averaged_statistics <- snakemake@output[["averaged_statistics"]]
+# OUTPUT FILES
 path_CT_statistics <- snakemake@output[["CT_statistics"]]
 
+# INPUT FILES
+path_significant_interactions <- snakemake@input[["significant_interactions"]]
+path_simulated_interactions <- snakemake@input[["simulated_interactions"]]
 
 ########################################
 ##### Loading and processing files #####
@@ -75,39 +75,21 @@ for(comb_CTs in combinations_CTs)
 # statistics #
 ##############
 
-# calculate average statistics across all CT_CT combination
-# MEAN
-mean_precision = sapply(combinations_CTs, function(x) { lst_score_perCTCT[[x]]$precision }) %>% mean %>% round(2)
-mean_recall = sapply(combinations_CTs, function(x) { lst_score_perCTCT[[x]]$recall }) %>% mean %>% round(2)
-mean_f1score = sapply(combinations_CTs, function(x) 
-{ 
-    # sometimes precision and recall is 0 which gives NaN f1score -> replace by 0
-    if(lst_score_perCTCT[[x]]$f1score %>% is.nan) {0} else {lst_score_perCTCT[[x]]$f1score }#
-
-}) %>% mean %>% round(2)
-
-# create df to store results per CT_CT combination
-df_score_perCTcombinations = do.call(rbind.data.frame, lst_score_perCTCT)
-df_score_perCTcombinations$interacting_CT = rownames(df_score_perCTcombinations)
-
-# SD
-sd_precision = sd(df_score_perCTcombinations$precision) %>% round(3)
-sd_recall = sd(df_score_perCTcombinations$recall) %>% round(3)
-sd_f1score = sd(df_score_perCTcombinations$f1score) %>% round(3)
+precision = lst_score_perCTCT[[1]]$precision%>% round(2)
+recall =  lst_score_perCTCT[[1]]$precision %>% round(2)
+f1score =  lst_score_perCTCT[[1]]$f1score %>% round(2)
 
 # print all scores
-print(paste("averaged precision:", mean_precision %>% round(4), "averaged recall:" ,mean_recall %>% round(4) , "averaged f1score:", mean_f1score %>% round(4)))
+print(paste("precision:", precision %>% round(4), "recall:" ,recall %>% round(4) , "f1score:", f1score %>% round(4)))
 
 # Create df to store average results
-df_statistics = data.frame(averaged_precision = mean_precision, averaged_recall = mean_recall, averaged_f1score = mean_f1score,
-                           sd_precision = sd_precision, sd_recall = sd_recall, sd_f1score = sd_f1score)
+df_statistics = data.frame(precision = precision, recall = recall, f1score = f1score)
 
 # in case f1score is NaN
-if(is.nan(df_statistics$averaged_f1score)) {df_statistics$averaged_f1score = 0}
+if(is.nan(df_statistics$f1score)) {df_statistics$f1score = 0}
 
 ######################
 ##### Save files #####
 ######################
 
-write.csv(df_statistics, path_averaged_statistics, row.names = F)
-write.csv(df_score_perCTcombinations, path_CT_statistics, row.names = F)
+write.csv(df_statistics, path_CT_statistics, row.names = F)

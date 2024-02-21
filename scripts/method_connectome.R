@@ -4,7 +4,6 @@ library(Seurat)
 library(dplyr)
 library(scuttle)
 
-
 # An useful error if the argument is missing
 if (is.null(snakemake@input[["sc_inflated_counts"]]) | is.null(snakemake@input[["sc_metadata"]]) | is.null(snakemake@input[["simulated_interactions"]]) | is.null(snakemake@output[["significant_interactions"]]) ){
   stop("Argument_name needs to be specified, but is missing.n", call.=FALSE)
