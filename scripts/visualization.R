@@ -54,6 +54,7 @@ PCE = config$semiSimulation$perc_cells_expressing %>% unlist %>% as.integer
 ############################
 
 diagnostic_plots_lst = list()
+diagnostic_plots_realFC = list()
 diagnostic_plots_perCT= list()
 for(dataset in datasets)
 {
@@ -61,6 +62,7 @@ for(dataset in datasets)
   # load files
   file_path = file.path(path_output_dir,paste0(dataset,"_semiSimulation_NB"))
   inflated_counts_files = file_path %>% list.files(., pattern = "sc_inflated_counts")
+  realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
   original_counts = read.table(file.path("data/",dataset, "raw_counts.tsv"))  # load original counts
   rownames(original_counts) = rownames(original_counts) %>% toupper()
   colnames(original_counts) = gsub("[.-]","_" , colnames(original_counts))
@@ -81,17 +83,30 @@ for(dataset in datasets)
   # iterate over the grid of parameters
   for(i in 1:nrow(params_grid))
   {
-    x = params_grid[i,]
+    x = params_grid[i,] %>% as.numeric ; names(x) = c("FC","PCE")
     
-    naming = paste0("FC_",x[,1],"_PCE_",x[,2])
+    naming = paste0("FC_",x["FC"],"_PCE_",x["PCE"])
     
     # load correct count file depending on the params_grid
-    counts_file = inflated_counts_files[grepl(paste0("^" , x[,1] , "$"), str_split(inflated_counts_files, "_") %>% lapply(., "[[", 5)) & grepl(paste0("^" , x[,2] , ".tsv$"), str_split(inflated_counts_files, "_") %>% lapply(., "[[", 7))]
+    counts_file = inflated_counts_files[grepl(paste0("^" , x["FC"] , "$"), str_split(inflated_counts_files, "_") %>% 
+                                                lapply(., "[[", 5)) & grepl(paste0("^" , x["PCE"] , ".tsv$"), str_split(inflated_counts_files, "_") %>% lapply(., "[[", 7))]
     master_lst_diagnosticPlots[[naming]][["counts"]] = read.table(file.path(file_path,counts_file))
     
     # load correct simulated interactions file depending on the params_grid
-    simulated_interactions_file = simulated_interactions_files[grepl(paste0("^" , x[,1] , "$"), str_split(simulated_interactions_files, "_") %>% lapply(., "[[", 4)) & grepl(paste0("^" , x[,2] , ".RDS$"), str_split(simulated_interactions_files, "_") %>% lapply(., "[[", 6))]
+    simulated_interactions_file = simulated_interactions_files[grepl(paste0("^" , x["FC"] , "$"), str_split(simulated_interactions_files, "_") %>% 
+                                                                       lapply(., "[[", 4)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(simulated_interactions_files, "_") %>% lapply(., "[[", 6))]
     master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] = readRDS(file.path(file_path,simulated_interactions_file))
+    
+    ###########################################################
+    ##### Generate Plots of real FC after semi-simulation #####
+    ###########################################################
+    
+    realFC_aftersimulation_file = realFC_aftersimulation_files[grepl(paste0("^" , x["FC"] , "$"), str_split(realFC_aftersimulation_files, "_") %>% 
+                                                                       lapply(., "[[", 3)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(realFC_aftersimulation_files, "_") %>% lapply(., "[[", 5))]
+    
+    diagnostic_plots_realFC[[dataset]][[paste0("PCE_",x["PCE"])]][[paste0("FC_",x["FC"])]] = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
+      unlist %>%
+      plot_FCafter_semisimulation(. , theoreticalFC = x["FC"], PCE = x["PCE"])
     
     ########################################
     ##### Generate L/R inflated per CT #####
@@ -101,39 +116,34 @@ for(dataset in datasets)
     {
       # Find Ligand genes which were inflated in specified celltype 
       n = which(names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_") %>% lapply(.,"[[",1) %>% unlist %in% CT)
-      L_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% lapply("[[", 1) %>% unlist
-      L_genes_inflated_per_CT_to_keep = L_genes_inflated_per_CT_to_keep[!grepl("subunit", L_genes_inflated_per_CT_to_keep)] # remove subunit string
+      L_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% 
+        lapply("[[", 1) %>% unlist %>% setdiff(., "subunit") # remove subunit string
       
       # Find Receptor genes which were inflated in specified celltype inflated 
       n = which(names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_") %>% lapply(.,"[[",2) %>% unlist %in% CT)
-      R_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% lapply("[[", 2) %>% unlist
-      R_genes_inflated_per_CT_to_keep = R_genes_inflated_per_CT_to_keep[!grepl("subunit", R_genes_inflated_per_CT_to_keep)] # remove subunit string
+      R_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% 
+        lapply("[[", 2) %>% unlist%>% setdiff(., "subunit") # remove subunit string
       
       # Save inflated genes per CT
       master_lst_diagnosticPlots[[naming]][[CT]] = list(L = L_genes_inflated_per_CT_to_keep %>% unique , R = R_genes_inflated_per_CT_to_keep %>% unique)
     }
     
     # load correct PCE file depending on the params_grid
-    PCE_file = PCE_files[grepl(paste0("^" , x[,1] , "$"), str_split(PCE_files, "_") %>% lapply(., "[[", 6)) & grepl(paste0("^" , x[,2] , ".RDS$"), str_split(PCE_files, "_") %>% lapply(., "[[", 8))]
+    PCE_file = PCE_files[grepl(paste0("^" , x["FC"] , "$"), str_split(PCE_files, "_") %>% lapply(., "[[", 6)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(PCE_files, "_") %>% lapply(., "[[", 8))]
     master_lst_diagnosticPlots[[naming]][["PCE"]] = readRDS(file.path(file_path,PCE_file)) %>% unlist * 100 # transform to percentage
   }
   # filter original avelogcpm counts to contain same genes as the inflated count matrices
   original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$counts %>% rownames))
   
-  filtered_raw_metadata =  filter(metadata_file, Celltype %in% CT_present) 
-  filtered_original_counts = original_counts[,filtered_raw_metadata$cell_ID]
-  
-  diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = filtered_original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = filtered_raw_metadata, CT_toPlot = CT_present)
-  diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = filtered_original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                               FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = filtered_raw_metadata, CT_toPlot = CT_present[1])
-  #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = filtered_original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                           FC_param = FC[,c(1,4,8)], PCE_param = PCE[,c(1,4,8)], dataset = dataset, metadata = filtered_raw_metadata, CT_toPlot = CT_present)
-  #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = filtered_original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                             FC_param = FC[,c(1,4,8)], PCE_param = PCE[,c(1,4,8)], dataset = dataset, metadata = filtered_raw_metadata, CT_toPlot = CT_present[1])
-  
+  #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+  #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present)
+  #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+  #                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present[1])
+  diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+                                                             FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present)
+  diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+                                                               FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present[1])
 }
-
 
 ############################### Diagnostic plots
 for(dataset in datasets)
@@ -143,8 +153,13 @@ for(dataset in datasets)
   do.call(ggarrange,diagnostic_plots_lst[[dataset]]$PCE_fixedPCE) %>% print
   do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$avelogcpm_fixedPCE) %>% print
   do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$PCE_fixedPCE) %>% print
+  
+  x = 1:length(diagnostic_plots_realFC[[dataset]])
+  sapply(x, function(x) {do.call(ggarrange,diagnostic_plots_realFC[[dataset]][[x]]) %>% print}) %>% print
   dev.off()
 }
+
+
 
 ##################################
 ##### precision/recall plots #####
@@ -289,11 +304,13 @@ for(dataset in datasets)
   tmp_df = statistics_results_lst_recallprecision_plot[[dataset]]
   p1 = ggplot(tmp_df, aes(x = PCE, y = f1score, color = method)) + 
     geom_point() +
+    geom_line() +
     facet_grid(~FC) +
     ggtitle("Faceted by FC")
   
   p2 = ggplot(tmp_df, aes(x = FC, y = f1score, color = method)) + 
     geom_point() +
+    geom_line() +
     facet_grid(~PCE) +
     ggtitle("Faceted by PCE")
   

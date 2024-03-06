@@ -76,7 +76,7 @@ for(comb_CTs in combinations_CTs)
 ##############
 
 precision = lst_score_perCTCT[[1]]$precision%>% round(2)
-recall =  lst_score_perCTCT[[1]]$precision %>% round(2)
+recall =  lst_score_perCTCT[[1]]$recall %>% round(2)
 f1score =  lst_score_perCTCT[[1]]$f1score %>% round(2)
 
 # print all scores

@@ -1,6 +1,7 @@
 # Load package
 library(edgeR)
 library(dplyr)
+library(magrittr)
 
 # An useful error if the argument is missing
 if (is.null(snakemake@input[["raw_counts"]]) | is.null(snakemake@input[["raw_metadata"]])){
@@ -35,6 +36,7 @@ metadata$cell_ID = gsub("[.-]","_" , metadata$cell_ID)
 
 metadata$Celltype = gsub(" ","." , metadata$Celltype)
 
+rownames(counts) %<>% toupper() # change all gene names to upper
 
 # Check if the metadata rows correspond to column names
 stopifnot(colnames(counts) == metadata$cell_ID)

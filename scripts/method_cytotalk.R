@@ -37,7 +37,7 @@ Idents(SO) = metadata$Celltype
 ##############
 
 # Run liana method
-method_out = liana_wrap(SO, method = "cytotalk", resource = "OmniPath", min_cells = 0, return_all = T)
+method_out = liana_wrap(SO, method = "cytotalk", resource = "OmniPath", min_cells = 0)
 
 ######################
 # Create output list #

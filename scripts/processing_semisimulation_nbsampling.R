@@ -2,6 +2,7 @@ library(dplyr)
 library(stringr)
 library(liana)
 library(magrittr)
+library(edgeR)
 source("scripts/helper_functions.R")
 
 # An useful error if the argument is missing
@@ -15,6 +16,7 @@ path_sc_inflated_counts <- snakemake@output[["sc_inflated_counts"]]
 path_sc_metadata <- snakemake@output[["sc_metadata"]]
 path_perc_cells_expressing_perGene <- snakemake@output[["perc_cells_expressing_perGene"]]
 path_simulated_interactions <- snakemake@output[["simulated_interactions"]]
+path_FC_after_simulation <- snakemake@output[["FC_after_simulation"]]
 
 
 # INPUT FILES
@@ -67,9 +69,9 @@ target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
 stopifnot(colnames(counts) == metadata$cell_ID)
 
 # Subset counts and metadata to contain only the selected CT
-n = which(metadata$Celltype %in% target_ct)
-counts = counts[,n]
-metadata = metadata[n,]
+#n = which(metadata$Celltype %in% target_ct)
+#counts = counts[,n]
+#metadata = metadata[n,]
 
 # remove genes
 message(paste("Target celltypes:" , str_flatten(target_ct, " ")))
@@ -162,7 +164,36 @@ for(comb_CT in combination_CT)
 }
 
 # Semi simulation
-semi_simulation_out = semi_simulate(counts = counts, simulated_interactions_lst = simulated_interactions_lst , genemetadata = genemetadata,  metadata = metadata , combination_CT = combination_CT, pce = perc_cells_expressing)
+semi_simulation_out = semi_simulate(counts = counts, simulated_interactions_lst = simulated_interactions_lst , genemetadata = genemetadata, 
+                                    metadata = metadata , combination_CT = combination_CT, FC = FC, pce = perc_cells_expressing)
+
+#################################
+# calculate FC after simulation #
+#################################
+
+dge = DGEList(counts = semi_simulation_out$counts_inflated, samples = metadata)
+mm= model.matrix(as.formula("~0 + Celltype") , metadata)
+
+# Estimate disp
+dge <- estimateDisp(dge , design = mm)
+dge <- edgeR::calcNormFactors(dge)
+
+# estimating mu
+centered.off <- edgeR::getOffset(dge)  
+centered.off <- centered.off - mean(centered.off) 
+logmeans <- edgeR::mglmOneWay(dge$counts, offset = centered.off, design = mm,
+                              dispersion = dge$tagwise.dispersion) 
+
+means_perCT = exp(logmeans$coefficients)
+colnames(means_perCT) = colnames(mm)
+colnames(means_perCT) = gsub("Celltype","",colnames(means_perCT))
+
+# get simulated genes
+names1 = str_split(simulated_interactions_lst[[1]], "_")  %>% lapply("[[",1) %>% unlist %>% setdiff(.,"subunit") %>% unique
+names2 = str_split(simulated_interactions_lst[[1]], "_")  %>% lapply("[[",2) %>% unlist %>% setdiff(.,"subunit") %>% unique
+
+FC_after_semisimulation = list(FC_ct1 = means_perCT[names1,target_ct[1]] / genemetadata$mean[names1,target_ct[1]], 
+                                FC_ct2 = means_perCT[names2,target_ct[2]] / genemetadata$mean[names2,target_ct[2]])
 
 ################
 # save results #
@@ -172,5 +203,6 @@ write.table(semi_simulation_out$counts_inflated, sc_inflated_counts_path , sep =
 write.table(metadata,sc_metadata_path, sep = "\t")
 saveRDS(simulated_interactions_lst,path_simulated_interactions)
 saveRDS(semi_simulation_out$perc_cells_expressing_lst,path_perc_cells_expressing_perGene)
+saveRDS(FC_after_semisimulation,path_FC_after_simulation)
 
 sessionInfo()

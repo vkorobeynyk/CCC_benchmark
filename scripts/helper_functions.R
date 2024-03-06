@@ -1,6 +1,6 @@
 # Semi-simulation framework
 # one can semi-simulate several combinations of CT-CT pairs
-semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  metadata , combination_CT, pce)
+semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  metadata , combination_CT, FC, pce)
 {
   perc_cells_expressing_lst = list()
   counts_inflated = counts
@@ -56,7 +56,6 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
   return(list(counts_inflated = counts_inflated , perc_cells_expressing_lst = perc_cells_expressing_lst))
 }
 
-
 compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, dataset, metadata , CT_toPlot)
 {
   plot_avelogcpm_fixed_PCE = list()
@@ -65,8 +64,9 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
   plot_corr_fixed_FC = list()
   
   # selects cells belonging to the celltype indicated by CT_toPlot
-  counts = counts[,metadata$Celltype %in% CT_toPlot]
-  original_counts_aveLogCPM = aveLogCPM(counts)
+  filtered_raw_metadata =  filter(metadata, Celltype %in% CT_toPlot) 
+  filtered_original_counts = counts[,filtered_raw_metadata$cell_ID]
+  filtered_original_counts_aveLogCPM = aveLogCPM(filtered_original_counts)
   
   #######################################
   ### Plot AveLogCPM having PCE fixed ###
@@ -94,15 +94,15 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
       counts_aveLogCPM = aveLogCPM(tmp_counts)
       
       current_FC = str_split( x,"_") %>% lapply(., "[[", 2) %>% unlist
-      df = data.frame(original_counts = original_counts_aveLogCPM , avelogcpm = counts_aveLogCPM, is_LR =  rownames(tmp_counts) %in% genes_to_plot)
+      df = data.frame(original_counts = filtered_original_counts_aveLogCPM , avelogcpm = counts_aveLogCPM, is_LR =  rownames(tmp_counts) %in% genes_to_plot)
       plot = ggplot(df,aes(x = original_counts , y = avelogcpm , color = is_LR)) + 
         geom_point(size = 0.5) + 
         ggtitle(paste0("PCE = " ,PCE , " dataset = ",dataset, " CT = ",paste(CT_toPlot, collapse = " "))) +
         xlab("aveLogCPM original counts") +
-        ylab(paste("aveLogCPM FC=",current_FC))
+        ylab(paste("aveLogCPM FC=",current_FC)) +
+        theme(plot.title = element_text(size=12))
       plot_avelogcpm_fixed_PCE[[x]] = plot
     }
-    
     ####################### % of cells expressing
     df = data.frame(FC1 = master_lst[[min_FC_index]][["PCE"]] , FC2 = master_lst[[max_FC_index]][["PCE"]] )
     plot = ggplot(df,aes(x = FC1 , y = FC2)) + 
@@ -110,7 +110,8 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
       geom_abline(slope=1, intercept = 0) +
       ggtitle(paste("Param PCE_cells_expressing is", PCE, ", dataset ", dataset)) +
       xlab(paste("FC =", names(master_lst)[[min_FC_index]] %>% str_split("_") %>% lapply("[[",2) %>% unlist)) +
-      ylab(paste("FC =" , names(master_lst)[[max_FC_index]] %>% str_split("_") %>% lapply("[[",2) %>% unlist))
+      ylab(paste("FC =" , names(master_lst)[[max_FC_index]] %>% str_split("_") %>% lapply("[[",2) %>% unlist)) +
+      theme(plot.title = element_text(size=12))
     plot_corr_fixed_PCE_cells_expressing[[paste0("PCE_",PCE)]] = plot
   }
   
@@ -144,4 +145,23 @@ plot_variability = function(data, metric_plot, FC, color_range) {
       ggtitle(paste0("variability of ", metric_plot)) 
   }
   return(p)
+}
+
+# As theoretical FC that we apply in the semi-simulation actually doesnt represent the practical FC that the data will be transformed with generate a
+# plot with real FC after semi-simulation
+plot_FCafter_semisimulation = function(vec, theoreticalFC, PCE)
+{
+  df = data.frame(gene = names(vec), value = vec)
+  median = median(df$value) %>% round(.,2)
+  plot = ggplot(df, aes(x = gene , y = value) ) + 
+    geom_boxplot() +
+    geom_hline(yintercept=theoreticalFC, linetype="dashed", color = "red", linewidth = 1)  + 
+    geom_hline(yintercept=median, linetype="dashed", color = "blue", linewidth = 1)  + 
+    ggtitle(paste0("PCE=",PCE , " | theoretical FC=",theoreticalFC, " | real FC median=",median)) +
+    xlab("LR index") +
+    ylab("FC after simulation") +
+    theme(axis.text.x=element_blank(), #remove x axis labels
+          plot.title = element_text(size=8)
+    )
+  return(plot)
 }
