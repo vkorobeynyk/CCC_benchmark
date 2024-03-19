@@ -161,7 +161,7 @@ plot_FCafter_semisimulation = function(vec, theoreticalFC, PCE)
     xlab("LR index") +
     ylab("FC after simulation") +
     theme(axis.text.x=element_blank(), #remove x axis labels
-          plot.title = element_text(size=8)
+          plot.title = element_text(size=6)
     )
   return(plot)
 }

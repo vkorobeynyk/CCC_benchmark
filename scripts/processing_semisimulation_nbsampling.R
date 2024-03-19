@@ -17,6 +17,7 @@ path_sc_metadata <- snakemake@output[["sc_metadata"]]
 path_perc_cells_expressing_perGene <- snakemake@output[["perc_cells_expressing_perGene"]]
 path_simulated_interactions <- snakemake@output[["simulated_interactions"]]
 path_FC_after_simulation <- snakemake@output[["FC_after_simulation"]]
+path_target_ct_file <- snakemake@output[["target_ct_file"]] # this is needed to carry over the file for the methods -> some fail due to low amount of cells, so we have to filter based on CT we are simulating
 
 
 # INPUT FILES
@@ -204,5 +205,6 @@ write.table(metadata,sc_metadata_path, sep = "\t")
 saveRDS(simulated_interactions_lst,path_simulated_interactions)
 saveRDS(semi_simulation_out$perc_cells_expressing_lst,path_perc_cells_expressing_perGene)
 saveRDS(FC_after_semisimulation,path_FC_after_simulation)
+write.table(target_ct, path_target_ct_file , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
 
 sessionInfo()

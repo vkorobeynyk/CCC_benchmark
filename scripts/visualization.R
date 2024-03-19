@@ -74,8 +74,11 @@ for(dataset in datasets)
   
   # load metadata files
   # as the metadata files are the same -> load 1st one
-  metadata_file = read.table(file.path("data/",dataset, "raw_metadata.tsv"))
-  metadata_file$cell_ID = gsub("[.-]","_" , metadata_file$cell_ID)
+  metadata_path = file.path("data/processed",dataset)
+  metadata_file = list.files(metadata_path, pattern = "metadata_")
+  metadata = read.table(file.path(metadata_path,metadata_file))
+  
+  metadata$cell_ID = gsub("[.-]","_" , metadata$cell_ID)
   
   # generate the grid of parameters used for naming the list to generate outputs
   params_grid = expand.grid(vector1 = FC, vector2 = PCE)
@@ -136,13 +139,13 @@ for(dataset in datasets)
   original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$counts %>% rownames))
   
   #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present)
+  #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
   #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present[1])
+  #                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
   diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                             FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present)
+                                                             FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
   diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                               FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata_file, CT_toPlot = CT_present[1])
+                                                               FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
 }
 
 ############################### Diagnostic plots

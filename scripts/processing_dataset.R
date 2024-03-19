@@ -85,6 +85,6 @@ write.table(counts, counts_processed_path , sep = "\t")
 write.table(metadata, metadata_processed_path , sep = "\t")
 saveRDS(gene_metadata, gene_metadata_path)
 set.seed(1)
-write.table(table(metadata$Celltype)[c(1,2)] %>% names, target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
+write.table(table(metadata$Celltype) %>% sort(decreasing = T) %>% names %>% extract(1:2), target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
 
 sessionInfo()

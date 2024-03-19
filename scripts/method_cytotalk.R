@@ -6,7 +6,8 @@ library(scuttle)
 
 
 # An useful error if the argument is missing
-if (is.null(snakemake@input[["sc_inflated_counts"]]) | is.null(snakemake@input[["sc_metadata"]]) | is.null(snakemake@input[["simulated_interactions"]]) | is.null(snakemake@output[["significant_interactions"]]) ){
+if (is.null(snakemake@input[["sc_inflated_counts"]]) | is.null(snakemake@input[["sc_metadata"]]) | is.null(snakemake@input[["simulated_interactions"]]) | is.null(snakemake@input[["target_ct_file"]])
+    | is.null(snakemake@output[["significant_interactions"]]) ){
   stop("Argument_name needs to be specified, but is missing.n", call.=FALSE)
 }
 
@@ -15,6 +16,7 @@ path_sc_inflated_counts <- snakemake@input[["sc_inflated_counts"]]
 path_sc_metadata <- snakemake@input[["sc_metadata"]]
 path_significant_interactions <- snakemake@output[["significant_interactions"]]
 path_simulated_interactions <- snakemake@input[["simulated_interactions"]]
+target_ct_file_path <- snakemake@input[["target_ct_file"]]
 
 #############
 # load data #
@@ -23,6 +25,7 @@ path_simulated_interactions <- snakemake@input[["simulated_interactions"]]
 raw_counts = read.csv(path_sc_inflated_counts,sep="\t") %>% as.matrix
 metadata = read.csv(path_sc_metadata,sep="\t")
 simulated_interactions = readRDS(path_simulated_interactions)
+target_ct_file = read.table(target_ct_file_path) %>% unlist %>% as.character
 
 #################
 # Preprocessing #
@@ -32,6 +35,8 @@ SO = CreateSeuratObject(raw_counts, meta.data = metadata)
 SO = NormalizeData(SO)
 Idents(SO) = metadata$Celltype
 
+# filter SO to have only Celltypes we simulated 
+SO = SO[,metadata$Celltype %in% target_ct_file]
 ##############
 # Run method #
 ##############
