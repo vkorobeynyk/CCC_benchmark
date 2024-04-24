@@ -14,7 +14,7 @@ raw_metadata_path = snakemake@input[["raw_metadata"]]
 
 counts_processed_path = snakemake@output[["counts_processed"]]
 metadata_processed_path = snakemake@output[["metadata_processed"]]
-gene_metadata_path = snakemake@output[["gene_metadata"]]
+genemetadata_path = snakemake@output[["genemetadata"]]
 target_ct_file_path = snakemake@output[["target_ct_file"]]
 
 ### ----------------------------------------------------------------- ###
@@ -23,7 +23,9 @@ target_ct_file_path = snakemake@output[["target_ct_file"]]
 
 
 counts = read.table(raw_counts_path)
+rownames(counts) = toupper(rownames(counts))
 metadata = read.table(raw_metadata_path, header = TRUE)
+rownames(metadata) = metadata$cell_ID
 
 if(!any("Celltype" == colnames(metadata)) | !any("cell_ID" == colnames(metadata))) 
 {
@@ -36,11 +38,10 @@ metadata$cell_ID = gsub("[.-]","_" , metadata$cell_ID)
 
 metadata$Celltype = gsub(" ","." , metadata$Celltype)
 
-rownames(counts) %<>% toupper() # change all gene names to upper
-
 # Check if the metadata rows correspond to column names
 stopifnot(colnames(counts) == metadata$cell_ID)
 
+target_ct = table(metadata$Celltype) %>% sort(decreasing = T) %>% names %>% extract(1:2)
 #############
 # Filtering #
 #############
@@ -74,17 +75,30 @@ logmeans <- edgeR::mglmOneWay(dge$counts, offset = centered.off, design = mm,
 means_perCT = exp(logmeans$coefficients)
 colnames(means_perCT) = colnames(mm)
 colnames(means_perCT) = gsub("Celltype","",colnames(means_perCT))
+rownames(means_perCT) %<>% toupper
+########################################################
+# remove genes with mean == 0 in celltypes to simulate #
+########################################################
 
+gene_index = which(means_perCT[,target_ct[1]] == 0 | means_perCT[,target_ct[2]] == 0)
+if(length(gene_index) > 0) {
+  means_perCT = means_perCT[-gene_index,]
+  counts = counts[-gene_index,] # remove in counts
+}
+
+stopifnot(rownames(means_perCT) == rownames(counts))
 #############################
 # Update gene metadata file #
 #############################
-gene_metadata = list( disp = data.frame(gene = rownames(counts) , edgeR_dispersion = dge$tagwise.dispersion) ,
+genemetadata = list( disp = data.frame(gene = rownames(counts) , edgeR_dispersion = dge[-gene_index,]$tagwise.dispersion) ,
                       mean = means_perCT)
+
+rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
 
 write.table(counts, counts_processed_path , sep = "\t")
 write.table(metadata, metadata_processed_path , sep = "\t")
-saveRDS(gene_metadata, gene_metadata_path)
+saveRDS(genemetadata, genemetadata_path)
 set.seed(1)
-write.table(table(metadata$Celltype) %>% sort(decreasing = T) %>% names %>% extract(1:2), target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
+write.table(target_ct, target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
 
 sessionInfo()

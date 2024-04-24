@@ -6,7 +6,7 @@ library(edgeR)
 source("scripts/helper_functions.R")
 
 # An useful error if the argument is missing
-if (is.null(snakemake@input[["counts_processed"]]) | is.null(snakemake@input[["metadata_processed"]]) | is.null(snakemake@input[["gene_metadata"]]) | is.null(snakemake@input[["target_ct_file"]]) | 
+if (is.null(snakemake@input[["counts_processed"]]) | is.null(snakemake@input[["metadata_processed"]]) | is.null(snakemake@input[["genemetadata"]]) | is.null(snakemake@input[["target_ct_file"]]) | 
     is.null(snakemake@params[["nLR_per_CTCTcomb"]]) | is.null(snakemake@wildcards[["FC"]]) | is.null(snakemake@wildcards[["perc_cells_expressing"]]) | 
     is.null(snakemake@output[["sc_inflated_counts"]]) | is.null(snakemake@output[["simulated_interactions"]])  | is.null(snakemake@output[["sc_metadata"]])  | is.null(snakemake@output[["perc_cells_expressing_perGene"]])){
   stop("Argument_name needs to be specified, but is missing.n", call.=FALSE)
@@ -23,7 +23,7 @@ path_target_ct_file <- snakemake@output[["target_ct_file"]] # this is needed to 
 # INPUT FILES
 counts_processed_path <- snakemake@input[["counts_processed"]]
 metadata_processed_path <- snakemake@input[["metadata_processed"]]
-gene_metadata_path <- snakemake@input[["gene_metadata"]]
+genemetadata_path <- snakemake@input[["genemetadata"]]
 target_ct_file_path <- snakemake@input[["target_ct_file"]]
 
 ##################
@@ -46,25 +46,22 @@ cells_sampled_perCTCT_path <- snakemake@output[["cells_sampled_perCTCT"]]
 #############
 
 counts = read.table(counts_processed_path)
-rownames(counts) = toupper(rownames(counts))
 metadata = read.table(metadata_processed_path)
+genemetadata = readRDS(genemetadata_path)
+means_perCT = genemetadata$mean
+target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
+
+'
+counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x_immune_R2//counts_10x_immune_R2_processed.tsv")
+rownames(counts) = toupper(rownames(counts))
+metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x_immune_R2//metadata_10x_immune_R2_processed.tsv")
 rownames(metadata) = metadata$cell_ID
-genemetadata = readRDS(gene_metadata_path)
+genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x_immune_R2//genemetadata.tsv")
 rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
 means_perCT = genemetadata$mean
 rownames(means_perCT) = rownames(means_perCT) %>% toupper
-target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
-
-#counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/counts_VASAseq_processed.tsv")
-#rownames(counts) = toupper(rownames(counts))
-#metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/metadata_VASAseq_processed.tsv")
-#rownames(metadata) = metadata$cell_ID
-#genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/gene_metadata.tsv")
-#rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
-#means_perCT = genemetadata$mean
-#rownames(means_perCT) = rownames(means_perCT) %>% toupper
-#target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq//target_ct_file.tsv") %>% unlist %>% as.character
-
+target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x_immune_R2//target_ct_file.tsv") %>% unlist %>% as.character
+'
 
 # check if cell names of counts and metadata correspond and are in the same order
 stopifnot(colnames(counts) == metadata$cell_ID)
@@ -95,12 +92,14 @@ LRdb = LRdb[!duplicated(LRdb$L_R),]
 
 message(paste("After filtering LR database," , nrow(LRdb) , "LR pairs show expression in at least 10 cells"))
 
+# filter LRdb to only contain L/R that have mean != 0
+LRdb %<>% filter(ligand %in% rownames(means_perCT))
+LRdb %<>% filter(receptor %in% rownames(means_perCT))
+
 ###########################
 # Inflate gene expression #
 ###########################
 set.seed(3)
-#combination_CT = expand.grid(target_ct,target_ct)
-#combination_CT = paste0(combination_CT$Var1, "_", combination_CT$Var2)
 combination_CT = str_flatten(target_ct,"_")
 simulated_interactions_lst = list()
 
@@ -123,8 +122,8 @@ for(comb_CT in combination_CT)
   LRdb_cpdb = select_resource(c('CellPhoneDB'))[[1]]
   LRdb_cpdb = rbind(filter(LRdb_cpdb, grepl("COMPLEX", source)) , filter(LRdb_cpdb, grepl("COMPLEX", target)))
   
-  LRdb_join = rbind(LRdb_cellchat , LRdb_cpdb)
-  LRdb_join = LRdb_join[!str_c(LRdb_join$source, LRdb_join$target) %>% duplicated,] # remove duplicated entries
+  LRdb_forSubunits_joined = rbind(LRdb_cellchat , LRdb_cpdb)
+  LRdb_forSubunits_joined = LRdb_forSubunits_joined[!str_c(LRdb_forSubunits_joined$source, LRdb_forSubunits_joined$target) %>% duplicated,] # remove duplicated entries
   
   # remove the sampled LR pairs 
   tmp_LRdb = tmp_LRdb[-index_toSample,]
@@ -135,7 +134,7 @@ for(comb_CT in combination_CT)
   ############## find subunits for ligands
   for(gene in LR_sample$ligand)
   {
-    tmp_df = filter(LRdb_join , grepl(gene, source_genesymbol) & grepl("COMPLEX", source))
+    tmp_df = filter(LRdb_forSubunits_joined , grepl(gene, source_genesymbol) & grepl("COMPLEX", source))
     
     # in case this gene has no subunits, skip
     if(nrow(tmp_df) == 0) {next}
@@ -149,14 +148,13 @@ for(comb_CT in combination_CT)
   ############## find subunits for receptors
   for(gene in LR_sample$receptor)
   {
-    tmp_df = filter(LRdb_join , grepl(gene, target_genesymbol) & grepl("COMPLEX", target))
+    tmp_df = filter(LRdb_forSubunits_joined , grepl(gene, target_genesymbol) & grepl("COMPLEX", target))
     
     # in case this gene has no subunits, skip
     if(nrow(tmp_df) == 0) {next}
     
     subunits = c(tmp_df$target_genesymbol %>% str_split("_") %>% lapply("[",1) , tmp_df$target_genesymbol %>% str_split("_") %>% lapply("[",2)) %>% unlist %>% unique()
     subunits = subunits[!grepl(gene, subunits)] # remove original gene
-    
     simulated_interactions_lst[[comb_CT]]  %<>% append(. , subunits[which(subunits %in% rownames(counts))] %>% str_c("subunit_" , .)) # remove empty strings and add subunit . Also here we filter subunits that are not present in count data
   }
   
@@ -171,30 +169,44 @@ semi_simulation_out = semi_simulate(counts = counts, simulated_interactions_lst 
 #################################
 # calculate FC after simulation #
 #################################
-
 dge = DGEList(counts = semi_simulation_out$counts_inflated, samples = metadata)
-mm= model.matrix(as.formula("~0 + Celltype") , metadata)
 
-# Estimate disp
-dge <- estimateDisp(dge , design = mm)
-dge <- edgeR::calcNormFactors(dge)
 
-# estimating mu
-centered.off <- edgeR::getOffset(dge)  
-centered.off <- centered.off - mean(centered.off) 
-logmeans <- edgeR::mglmOneWay(dge$counts, offset = centered.off, design = mm,
-                              dispersion = dge$tagwise.dispersion) 
-
-means_perCT = exp(logmeans$coefficients)
-colnames(means_perCT) = colnames(mm)
-colnames(means_perCT) = gsub("Celltype","",colnames(means_perCT))
+# estimate the mean only for cells that had their expression increase
+# iterate over 2 CT and subset dge to only contain the inflated cells for that CT
 
 # get simulated genes
-names1 = str_split(simulated_interactions_lst[[1]], "_")  %>% lapply("[[",1) %>% unlist %>% setdiff(.,"subunit") %>% unique
-names2 = str_split(simulated_interactions_lst[[1]], "_")  %>% lapply("[[",2) %>% unlist %>% setdiff(.,"subunit") %>% unique
+names_ofLgenes = str_split(simulated_interactions_lst[[1]], "_")  %>% lapply("[[",1) %>% unlist %>% setdiff(.,"subunit") %>% unique
+names_ofRgenes = str_split(simulated_interactions_lst[[1]], "_")  %>% lapply("[[",2) %>% unlist %>% setdiff(.,"subunit") %>% unique
 
-FC_after_semisimulation = list(FC_ct1 = means_perCT[names1,target_ct[1]] / genemetadata$mean[names1,target_ct[1]], 
-                                FC_ct2 = means_perCT[names2,target_ct[2]] / genemetadata$mean[names2,target_ct[2]])
+FC_after_semisimulation = list()
+for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
+{
+  # select the proper set of genes (either ligand for sender Ct or receiver for receiving CT)
+  if(CT == names(semi_simulation_out$not_inflated_cells[[1]])[1]) {gene_names = names_ofLgenes} else if(CT == names(semi_simulation_out$not_inflated_cells[[1]])[2]) {gene_names = names_ofRgenes}
+  
+  cells_to_keep = setdiff(colnames(dge), semi_simulation_out$not_inflated_cells[[1]][CT][[1]])
+  tmp_dge = dge[,cells_to_keep]
+  
+  # update model matrix
+  metadata2 = metadata %>% filter(cell_ID %in% cells_to_keep) # filter metadata
+  mm= model.matrix(as.formula("~0 + Celltype") , metadata2)
+  
+  # Estimate disp
+  tmp_dge <- estimateDisp(tmp_dge , design = mm)
+  tmp_dge <- edgeR::calcNormFactors(tmp_dge)
+  
+  # estimating mu
+  centered.off <- edgeR::getOffset(tmp_dge)  
+  centered.off <- centered.off - mean(centered.off) 
+  logmeans <- edgeR::mglmOneWay(tmp_dge$counts, offset = centered.off, design = mm,
+                                dispersion = tmp_dge$tagwise.dispersion) 
+  
+  means_perCT_semisimulation = exp(logmeans$coefficients)
+  colnames(means_perCT_semisimulation) = colnames(mm)
+  colnames(means_perCT_semisimulation) = gsub("Celltype","",colnames(means_perCT_semisimulation))
+  FC_after_semisimulation[[CT]] = means_perCT_semisimulation[gene_names,CT] / means_perCT[gene_names,CT]
+}
 
 ################
 # save results #

@@ -4,6 +4,7 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
 {
   perc_cells_expressing_lst = list()
   counts_inflated = counts
+  not_inflated_cells = list()
   
   for(comb_CT in combination_CT)
   {
@@ -28,6 +29,8 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
       CT_cells = colnames(counts)[which(metadata$Celltype == CT)]
       # only select specific percentage of cells to increase expression
       cells_to_impute = sample(CT_cells, (length(CT_cells) * pce / 100) %>% ceiling)
+      #save the inflated cells for estimating mean
+      not_inflated_cells[[comb_CT]][[CT]] = setdiff(CT_cells, cells_to_impute)
       # Iterate over every gene (L/R) depending on the CT and inflate expression
       for(gene in genes_to_sample)
       {
@@ -40,8 +43,10 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
         
         gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
         mu = gene_mean * FC
-        x1 = rnbinom(50000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
-        x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)
+        x1 = rnbinom(1000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
+        if(all(x1 == 0)) {x1 = sample(1, length(cells_to_impute), replace = T)}
+        else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
+        
         
         # Add the final expression to sampled zero cells
         counts_inflated[gene ,cells_to_impute] = x1
@@ -53,7 +58,8 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
     }
   } 
   
-  return(list(counts_inflated = counts_inflated , perc_cells_expressing_lst = perc_cells_expressing_lst))
+  return(list(counts_inflated = counts_inflated , perc_cells_expressing_lst = perc_cells_expressing_lst,
+              not_inflated_cells = not_inflated_cells))
 }
 
 compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, dataset, metadata , CT_toPlot)
@@ -100,7 +106,9 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
         ggtitle(paste0("PCE = " ,PCE , " dataset = ",dataset, " CT = ",paste(CT_toPlot, collapse = " "))) +
         xlab("aveLogCPM original counts") +
         ylab(paste("aveLogCPM FC=",current_FC)) +
-        theme(plot.title = element_text(size=12))
+        theme(plot.title = element_text(size=8) , 
+              axis.text.x = element_text(size = 8) , 
+              axis.text.y = element_text(size = 8))
       plot_avelogcpm_fixed_PCE[[x]] = plot
     }
     ####################### % of cells expressing
@@ -151,17 +159,21 @@ plot_variability = function(data, metric_plot, FC, color_range) {
 # plot with real FC after semi-simulation
 plot_FCafter_semisimulation = function(vec, theoreticalFC, PCE)
 {
+  PCE = PCE %>% unname()
+  theoreticalFC = theoreticalFC %>% unname()
   df = data.frame(gene = names(vec), value = vec)
   median = median(df$value) %>% round(.,2)
   plot = ggplot(df, aes(x = gene , y = value) ) + 
-    geom_boxplot() +
+    geom_point() +
     geom_hline(yintercept=theoreticalFC, linetype="dashed", color = "red", linewidth = 1)  + 
     geom_hline(yintercept=median, linetype="dashed", color = "blue", linewidth = 1)  + 
-    ggtitle(paste0("PCE=",PCE , " | theoretical FC=",theoreticalFC, " | real FC median=",median)) +
+    ggtitle(paste0("PCE=",PCE , " | theoretical FC=",theoreticalFC , " | real FC median=",median)) +
     xlab("LR index") +
-    ylab("FC after simulation") +
+    ylab("FC after simulation (log10 scale)") +
+    scale_y_log10() +
     theme(axis.text.x=element_blank(), #remove x axis labels
-          plot.title = element_text(size=6)
+          plot.title = element_text(size=8)  , 
+          axis.text.y = element_text(size = 8)
     )
-  return(plot)
+  return(list(plot = plot, theoreticalFC = theoreticalFC, PCE_real = PCE, FC_real_median = median))
 }

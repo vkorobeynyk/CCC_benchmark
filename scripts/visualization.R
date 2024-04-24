@@ -8,6 +8,7 @@ library(stringr)
 library(edgeR)
 library(ggrepel)
 library(reshape2)
+library(purrr)
 source("scripts/helper_functions.R")
 
 # Get list with command line arguments by name
@@ -49,20 +50,46 @@ PCE = config$semiSimulation$perc_cells_expressing %>% unlist %>% as.integer
 #datasets = datasets[1:2]
 #FC = FC[1:2]
 #PCE = PCE[1:2]
+
+diagnostic_plots_realFC = list()
+diagnostic_df_realFC = list()
+for(dataset in datasets)
+{
+  file_path = file.path(path_output_dir,paste0(dataset,"_semiSimulation_NB"))
+  realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
+  params_grid = expand.grid(vector1 = FC, vector2 = PCE)
+  for(i in 1:nrow(params_grid))
+  {
+    x = params_grid[i,] %>% as.numeric ; names(x) = c("FC","PCE")
+    ###########################################################
+    ##### Generate Plots of real FC after semi-simulation #####
+    ###########################################################
+    
+    realFC_aftersimulation_file = realFC_aftersimulation_files[grepl(paste0("^" , x["FC"] , "$"), str_split(realFC_aftersimulation_files, "_") %>% 
+                                                                       lapply(., "[[", 3)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(realFC_aftersimulation_files, "_") %>% lapply(., "[[", 5))]
+    
+    tmp_lst = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
+      unlist %>% subset(.,!is.infinite(.)) %>% 
+      plot_FCafter_semisimulation(. , theoreticalFC = x["FC"], PCE = x["PCE"])
+    
+    diagnostic_plots_realFC[[dataset]][[paste0("FC_",x["FC"])]][[paste0("PCE_",x["PCE"])]] = tmp_lst %>% pluck("plot")
+    
+    diagnostic_df_realFC[[dataset]][[paste0("index_",i)]] = tmp_lst[c(2,3,4)] %>% as.data.frame
+  }
+}
+
 ############################
 ##### Diagnostic plots #####
 ############################
 
 diagnostic_plots_lst = list()
-diagnostic_plots_realFC = list()
 diagnostic_plots_perCT= list()
 for(dataset in datasets)
 {
-  
   # load files
   file_path = file.path(path_output_dir,paste0(dataset,"_semiSimulation_NB"))
   inflated_counts_files = file_path %>% list.files(., pattern = "sc_inflated_counts")
-  realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
+  #realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
   original_counts = read.table(file.path("data/",dataset, "raw_counts.tsv"))  # load original counts
   rownames(original_counts) = rownames(original_counts) %>% toupper()
   colnames(original_counts) = gsub("[.-]","_" , colnames(original_counts))
@@ -103,13 +130,18 @@ for(dataset in datasets)
     ###########################################################
     ##### Generate Plots of real FC after semi-simulation #####
     ###########################################################
-    
+    '
     realFC_aftersimulation_file = realFC_aftersimulation_files[grepl(paste0("^" , x["FC"] , "$"), str_split(realFC_aftersimulation_files, "_") %>% 
                                                                        lapply(., "[[", 3)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(realFC_aftersimulation_files, "_") %>% lapply(., "[[", 5))]
     
-    diagnostic_plots_realFC[[dataset]][[paste0("PCE_",x["PCE"])]][[paste0("FC_",x["FC"])]] = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
+    tmp_lst = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
       unlist %>%
       plot_FCafter_semisimulation(. , theoreticalFC = x["FC"], PCE = x["PCE"])
+    
+    diagnostic_plots_realFC[[dataset]][[paste0("FC_",x["FC"])]][[paste0("PCE_",x["PCE"])]] = tmp_lst %>% pluck("plot")
+    
+    diagnostic_df_realFC[[dataset]][[paste0("index_",i)]] = tmp_lst[c(2,3,4)] %>% as.data.frame
+    '
     
     ########################################
     ##### Generate L/R inflated per CT #####
@@ -138,31 +170,29 @@ for(dataset in datasets)
   # filter original avelogcpm counts to contain same genes as the inflated count matrices
   original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$counts %>% rownames))
   
-  #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
-  #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
   diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                             FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
+                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
   diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                               FC_param = FC[,c(1,3,6,8)], PCE_param = PCE[,c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
+                                                               FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
+  #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+  #                                                           FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
+  #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+  #                                                             FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
 }
 
 ############################### Diagnostic plots
 for(dataset in datasets)
 {
   pdf(file.path(path_results_dir ,paste0(dataset, "_diagnostic_plots.pdf")), width = 12, height = 7)
-  do.call(ggarrange,diagnostic_plots_lst[[dataset]]$avelogcpm_fixedPCE) %>% print
+  do.call(ggarrange,c(diagnostic_plots_lst[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE)) %>% print
   do.call(ggarrange,diagnostic_plots_lst[[dataset]]$PCE_fixedPCE) %>% print
-  do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$avelogcpm_fixedPCE) %>% print
+  do.call(ggarrange,c(diagnostic_plots_perCT[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE)) %>% print
   do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$PCE_fixedPCE) %>% print
   
   x = 1:length(diagnostic_plots_realFC[[dataset]])
   sapply(x, function(x) {do.call(ggarrange,diagnostic_plots_realFC[[dataset]][[x]]) %>% print}) %>% print
   dev.off()
 }
-
-
 
 ##################################
 ##### precision/recall plots #####
@@ -195,7 +225,17 @@ for(dataset in datasets)
     tmp_FC = lapply(x, "[[" , 5) %>% unlist %>% as.double
     PCE = lapply(x, "[[" , 7) %>% unlist %>% as.double
     
-    statistics_results_lst[[dataset]][[method]]$FC = tmp_FC
+    # replace the theoretical FC for the median of all effective FC for all genes
+    tmp_diagnostic_df_realFC = do.call(rbind, diagnostic_df_realFC[[dataset]])
+    
+    FC_real = vector()
+    for(i in 1:length(PCE))
+    {
+      FC_real = append(FC_real,filter(tmp_diagnostic_df_realFC, theoreticalFC == tmp_FC[i] & PCE_real == PCE[i]) %>% 
+                         select("FC_real_median") %>% as.numeric) %>% round
+    }
+    
+    statistics_results_lst[[dataset]][[method]]$FC = FC_real
     statistics_results_lst[[dataset]][[method]]$PCE = PCE
     statistics_results_lst[[dataset]][[method]]$method = method
     
@@ -207,7 +247,16 @@ for(dataset in datasets)
     tmp_FC = lapply(x, "[[" , 5) %>% unlist %>% as.double
     PCE = lapply(x, "[[" , 7) %>% unlist %>% as.double
     
-    statistics_results_lst_recallprecision_plot[[dataset]][[method]]$FC = tmp_FC
+    # replace the theoretical FC for the median of all effective FC for all genes
+    FC_real = vector()
+    for(i in 1:length(PCE))
+    {
+      FC_real = append(FC_real,filter(tmp_diagnostic_df_realFC, theoreticalFC == tmp_FC[i] & PCE_real == PCE[i]) %>% 
+                         select("FC_real_median") %>% as.numeric) %>% round
+    }
+    rm(tmp_diagnostic_df_realFC)
+    
+    statistics_results_lst_recallprecision_plot[[dataset]][[method]]$FC = FC_real
     statistics_results_lst_recallprecision_plot[[dataset]][[method]]$PCE = PCE
     statistics_results_lst_recallprecision_plot[[dataset]][[method]]$method = method
   }
@@ -220,7 +269,6 @@ for(dataset in datasets)
   tmp$dataset = dataset
   statistics_results_lst_recallprecision_plot[[dataset]] = tmp
   
-  
   ##########################################
   ##### Generate Precision recall plot #####
   ##########################################
@@ -228,6 +276,7 @@ for(dataset in datasets)
   PCE = as.factor(statistics_results_lst_recallprecision_plot[[dataset]]$PCE)
   FC = as.factor(statistics_results_lst_recallprecision_plot[[dataset]]$FC)
   
+  '
   # PLot precision recall curves when generating 1 plot per FC
   lst_precision_recall_byFC = list()
   for(fc in levels(FC))
@@ -248,7 +297,7 @@ for(dataset in datasets)
             plot.title = element_text(size=10))
     lst_precision_recall_byFC[[paste0("FC_",fc)]] = p
   }
-  
+  '
   # PLot precision recall curves when generating 1 plot per PCE
   lst_precision_recall_byPCE = list()
   for(pce in levels(PCE))
@@ -269,6 +318,7 @@ for(dataset in datasets)
             plot.title = element_text(size=10))
     lst_precision_recall_byPCE[[paste0("PCE_",pce)]] = p
   }
+  '
   # Fixed FC
   lst_valueVSpce = list()
   for(fc in unique(FC) %>% sort)
@@ -300,7 +350,7 @@ for(dataset in datasets)
     
     lst_valueVSfc[[paste0("PCE",pce)]] = ggarrange(p1,p2, common.legend = T)
   }
-  
+  '
   ##################################
   ##### Generate f1 score plot #####
   ##################################
@@ -308,7 +358,7 @@ for(dataset in datasets)
   p1 = ggplot(tmp_df, aes(x = PCE, y = f1score, color = method)) + 
     geom_point() +
     geom_line() +
-    facet_grid(~FC) +
+    facet_grid(~FC + PCE) +
     ggtitle("Faceted by FC")
   
   p2 = ggplot(tmp_df, aes(x = FC, y = f1score, color = method)) + 
@@ -318,10 +368,11 @@ for(dataset in datasets)
     ggtitle("Faceted by PCE")
   
   pdf(file.path(path_results_dir ,paste0(dataset, "_recall_precision_plots.pdf")), width = 12, height = 7)
-  ggarrange(plotlist = lst_precision_recall_byFC, common.legend = T) %>% print
+  #ggarrange(plotlist = lst_precision_recall_byFC, common.legend = T) %>% print
   ggarrange(plotlist = lst_precision_recall_byPCE, common.legend = T) %>% print
-  lst_valueVSpce %>% print
-  lst_valueVSfc %>% print
-  ggarrange(p1,p2, common.legend = T) %>% print
+  #lst_valueVSpce %>% print
+  #lst_valueVSfc %>% print
+  p1 %>% print
+  p2 %>% print
   dev.off()
 }
