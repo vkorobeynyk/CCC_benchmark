@@ -37,9 +37,7 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
         # set all the expression for this celltype to 0
         counts_inflated[gene ,CT_cells] = 0
         
-        gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  rownames(means_perCT)) , which(CT == colnames(means_perCT))]
-        # there are some genes that are not expressed at all in this CT -> take the mean estimated expression
-        if(gene_mean < 0.001) {gene_mean = means_perCT[gene,] %>% mean}
+        gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  means_perCT$gene_names) , which(CT == colnames(means_perCT))]
         
         gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
         mu = gene_mean * FC
