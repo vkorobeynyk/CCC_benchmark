@@ -38,14 +38,11 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
         counts_inflated[gene ,CT_cells] = 0
         
         gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  rownames(means_perCT)) , which(CT == colnames(means_perCT))]
-        # there are some genes that are not expressed at all in this CT -> take the mean estimated expression
-        if(gene_mean < 0.001) {gene_mean = means_perCT[gene,] %>% mean}
         
         gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
         mu = gene_mean * FC
         x1 = rnbinom(1000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
-        if(all(x1 == 0)) {x1 = sample(1, length(cells_to_impute), replace = T)}
-        else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
+        if(all(x1 == 0)) {x1 = sample(1, length(cells_to_impute), replace = T)} else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
         
         
         # Add the final expression to sampled zero cells

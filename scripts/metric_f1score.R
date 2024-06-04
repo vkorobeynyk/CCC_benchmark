@@ -1,6 +1,7 @@
 # Load package
 library(dplyr)
 library(jsonlite)
+library(stringr)
 
 # An useful error if the argument is missing
 if (is.null(snakemake@input[["significant_interactions"]]) | is.null(snakemake@input[["simulated_interactions"]]) | is.null(snakemake@output[["CT_statistics"]]) ){
@@ -42,12 +43,11 @@ for(comb_CTs in combinations_CTs)
 {
     if(comb_CTs %in% names(significant_interactions))
     {
-        # creave vectors with Interaction partners
+        # create vectors with Interaction partners
         simulated_interactions_CTCT = simulated_interactions[[comb_CTs]]
         # remove the subunit genes that we inflated -> if we dont remove them, we will have much more FN
         simulated_interactions_CTCT = simulated_interactions_CTCT[!grepl("subunit", simulated_interactions_CTCT)]
-        significant_interactions_CTCT = significant_interactions[[comb_CTs]]
-        significant_interactions_CTCT$LR = paste0(significant_interactions_CTCT$ligand , "_" , significant_interactions_CTCT$receptor)
+        significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor))
 
         # compute statistics
         TP = intersect(simulated_interactions_CTCT, significant_interactions_CTCT$LR) %>% length

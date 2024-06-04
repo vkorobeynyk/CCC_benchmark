@@ -76,6 +76,7 @@ means_perCT = exp(logmeans$coefficients)
 colnames(means_perCT) = colnames(mm)
 colnames(means_perCT) = gsub("Celltype","",colnames(means_perCT))
 rownames(means_perCT) %<>% toupper
+
 ########################################################
 # remove genes with mean == 0 in celltypes to simulate #
 ########################################################
@@ -98,7 +99,6 @@ rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
 write.table(counts, counts_processed_path , sep = "\t")
 write.table(metadata, metadata_processed_path , sep = "\t")
 saveRDS(genemetadata, genemetadata_path)
-set.seed(1)
 write.table(target_ct, target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
 
 sessionInfo()
