@@ -49,6 +49,7 @@ counts = read.table(counts_processed_path)
 metadata = read.table(metadata_processed_path)
 genemetadata = readRDS(genemetadata_path)
 means_perCT = genemetadata$mean
+rownames(means_perCT) = means_perCT$gene_names
 target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
 
 '
@@ -89,8 +90,8 @@ LRdb = LRdb[!duplicated(LRdb$L_R),]
 message(paste("After filtering LR database," , nrow(LRdb) , "LR pairs show expression in at least 10 cells"))
 
 # filter LRdb to only contain L/R that have mean != 0
-LRdb %<>% filter(ligand %in% rownames(means_perCT))
-LRdb %<>% filter(receptor %in% rownames(means_perCT))
+LRdb %<>% filter(ligand %in% means_perCT$gene_names)
+LRdb %<>% filter(receptor %in% means_perCT$gene_names)
 
 ###########################
 # Inflate gene expression #
@@ -179,7 +180,7 @@ FC_after_semisimulation = list()
 for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
 {
   # select the proper set of genes (either ligand for sender Ct or receiver for receiving CT)
-  if(CT == names(semi_simulation_out$not_inflated_cells[[1]])[1]) {gene_names = names_ofLgenes} else if(CT == names(semi_simulation_out$not_inflated_cells[[1]])[2]) {gene_names = names_ofRgenes}
+  if(CT == names(semi_simulation_out$not_inflated_cells[[1]])[1]) {simulated_genes = names_ofLgenes} else if(CT == names(semi_simulation_out$not_inflated_cells[[1]])[2]) {simulated_genes = names_ofRgenes}
   
   cells_to_keep = setdiff(colnames(dge), semi_simulation_out$not_inflated_cells[[1]][CT][[1]])
   tmp_dge = dge[,cells_to_keep]
@@ -198,11 +199,16 @@ for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
   logmeans <- edgeR::mglmOneWay(tmp_dge$counts, offset = centered.off, design = mm,
                                 dispersion = tmp_dge$tagwise.dispersion) 
   
-  means_perCT_semisimulation = exp(logmeans$coefficients)
+  means_perCT_semisimulation = exp(logmeans$coefficients) %>% as.data.frame
   colnames(means_perCT_semisimulation) = colnames(mm)
   colnames(means_perCT_semisimulation) = gsub("Celltype","",colnames(means_perCT_semisimulation))
-  FC_after_semisimulation[[CT]] = means_perCT_semisimulation[gene_names,CT] / means_perCT[gene_names,CT]
+  
+  means_perCT_semisimulation = means_perCT_semisimulation[order(means_perCT_semisimulation %>% rownames()),] # order based on gene names to ensure next line is correct
+  stopifnot(rownames(means_perCT_semisimulation) == rownames(means_perCT))  # make sure dataframe is order  based on gene names to ensure next line is correct
+  # error here
+  FC_after_semisimulation[[CT]] = means_perCT_semisimulation[simulated_genes,CT] / means_perCT[simulated_genes,CT]
 }
+
 
 ################
 # save results #
@@ -214,5 +220,4 @@ saveRDS(simulated_interactions_lst,path_simulated_interactions)
 saveRDS(semi_simulation_out$perc_cells_expressing_lst,path_perc_cells_expressing_perGene)
 saveRDS(FC_after_semisimulation,path_FC_after_simulation)
 write.table(target_ct, path_target_ct_file , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
-
 sessionInfo()

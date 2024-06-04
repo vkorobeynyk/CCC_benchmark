@@ -48,10 +48,22 @@ PCE = config$semiSimulation$perc_cells_expressing %>% unlist %>% as.integer
 
 diagnostic_plots_realFC = list()
 diagnostic_df_realFC = list()
+diagnostic_plots_MeanVar = list()
 for(dataset in datasets)
 {
   file_path = file.path(path_output_dir,paste0(dataset,"_semiSimulation_NB"))
   realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
+  
+  # Generate mean var plot of genes
+  genemetadata = readRDS(file.path("data/processed/", dataset,"genemetadata.RDS"))
+  p = ggplot(genemetadata$mean, aes(x = vars, y = means)) + geom_hex() +
+    geom_point(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=vars, y=means), colour="red", size=2) +
+    xlab("variance (log10)") +
+    ylab("mean (log10)") +
+    ggtitle(paste0("Highlighted LR genes for ",dataset))
+  
+  diagnostic_plots_MeanVar[[dataset]] = p
+  
   params_grid = expand.grid(vector1 = FC, vector2 = PCE)
   for(i in 1:nrow(params_grid))
   {
@@ -171,6 +183,7 @@ for(dataset in datasets)
   
   x = 1:length(diagnostic_plots_realFC[[dataset]])
   sapply(x, function(x) {do.call(ggarrange,diagnostic_plots_realFC[[dataset]][[x]]) %>% print}) %>% print
+  diagnostic_plots_MeanVar[[dataset]] %>% print
   dev.off()
 }
 
@@ -260,7 +273,7 @@ for(dataset in datasets)
     p = ggplot(data, aes(y = precision, x = recall , color = method)) + 
       geom_point(size = 1.5) + 
       geom_line() + 
-      geom_text_repel(aes(label = FC), size = 2.25) + ggtitle(paste0("PCE = ",pce)) +
+      geom_text_repel(aes(label = FC), size = 2.25,segment.linetype = 5,nudge_x = 0.005/max(data$recall)) + ggtitle(paste0("PCE = ",pce)) +
       scale_x_continuous(labels = scales::number_format(accuracy = 0.01)) +
       scale_y_continuous(labels = scales::number_format(accuracy = 0.01))  + 
       theme(legend.title = element_text(size = 7), 
@@ -301,7 +314,7 @@ for(dataset in datasets)
     facet_grid(~PCE) +
     ggtitle("Faceted by PCE . Ration - n_simulated_LR in top25%_significant_LR")
   
-  ############# save plots
+  ##### Save plots
   pdf(file.path(path_results_dir ,paste0(dataset, "_recall_precision_plots.pdf")), width = 12, height = 7)
   ggarrange(plotlist = lst_precision_recall_byPCE, common.legend = T) %>% print
   p1 %>% print

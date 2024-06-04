@@ -85,14 +85,39 @@ gene_index = which(means_perCT[,target_ct[1]] == 0 | means_perCT[,target_ct[2]] 
 if(length(gene_index) > 0) {
   means_perCT = means_perCT[-gene_index,]
   counts = counts[-gene_index,] # remove in counts
+  dge = dge[-gene_index,]
 }
 
 stopifnot(rownames(means_perCT) == rownames(counts))
+
+######################################
+# draw genes from mean-variance plot #
+######################################
+
+meanvar_relationship = plotMeanVar(dge, nbins = 20)
+df = data.frame(means = meanvar_relationship$bin.means %>% unlist %>% log10, vars = meanvar_relationship$bin.vars %>% unlist %>% log10,
+                gene_names = meanvar_relationship$bin.vars %>% unlist %>% names)
+
+
+# select 10 genes from each bin to be add signal to
+set.seed(3)
+vec_genes_toAdd_signal = vector()
+for(bin in 1:length(meanvar_relationship$bin.means))
+{
+  n = meanvar_relationship$bin.means[bin] %>% unlist
+  names = sample(names(n), size = 10, replace = F)
+  vec_genes_toAdd_signal = append(vec_genes_toAdd_signal, names)
+}
+
 #############################
 # Update gene metadata file #
 #############################
-genemetadata = list( disp = data.frame(gene = rownames(counts) , edgeR_dispersion = dge[-gene_index,]$tagwise.dispersion) ,
-                      mean = means_perCT)
+
+genemetadata = list( disp = data.frame(gene = rownames(counts) , edgeR_dispersion = dge$tagwise.dispersion) ,
+                      mean = means_perCT %>% as.data.frame )
+genemetadata$mean$gene_names = genemetadata$mean %>% rownames()
+genemetadata$mean = merge(genemetadata$mean, df, by = "gene_names") # add mean and variance info
+genemetadata$mean %<>% mutate(.,gene_to_use = genemetadata$mean$gene_names %in% vec_genes_toAdd_signal)
 
 rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
 
