@@ -53,15 +53,11 @@ rownames(means_perCT) = means_perCT$gene_names
 target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
 
 '
-counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/counts_10x_processed.tsv")
-rownames(counts) = toupper(rownames(counts))
-metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/metadata_10x_processed.tsv")
-rownames(metadata) = metadata$cell_ID
-genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x//genemetadata.tsv")
+counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x//counts_10x_processed.tsv")
+metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x//metadata_10x_processed.tsv")
+genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/genemetadata.RDS")
 means_perCT = genemetadata$mean
-rownames(means_perCT) = means_perCT$gene_names
-rownames(means_perCT) = rownames(means_perCT) %>% toupper
-target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/target_ct_file.tsv") %>% unlist %>% as.character
+target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x//target_ct_file.tsv") %>% unlist %>% as.character
 '
 
 # check if cell names of counts and metadata correspond and are in the same order

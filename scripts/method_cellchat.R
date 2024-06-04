@@ -21,7 +21,7 @@ target_ct_file_path <- snakemake@input[["target_ct_file"]]
 # load data #
 #############
 
-raw_counts = read.csv(path_sc_inflated_counts,sep="\t") %>% as.matrix
+inflated_counts = read.csv(path_sc_inflated_counts,sep="\t") %>% as.matrix
 metadata = read.csv(path_sc_metadata,sep="\t")
 simulated_interactions = readRDS(path_simulated_interactions)
 target_ct_file = read.table(target_ct_file_path) %>% unlist %>% as.character
@@ -30,7 +30,7 @@ target_ct_file = read.table(target_ct_file_path) %>% unlist %>% as.character
 # Preprocessing #
 #################
 
-SO = CreateSeuratObject(raw_counts, meta.data = metadata)
+SO = CreateSeuratObject(inflated_counts, meta.data = metadata)
 SO = NormalizeData(SO)
 Idents(SO) = metadata$Celltype
 
@@ -54,12 +54,13 @@ names(significant_interactions) = names(simulated_interactions)
 method_out$source_target = paste0(method_out$source , "_" , method_out$target)
 
 # Select only significant interactions
-method_out = method_out[method_out$pval < 0.05, c("ligand", "receptor", "pval" , "source_target")]
+method_out = method_out[method_out$pval < 0.05, c("ligand", "receptor", "pval","prob" , "source_target")]
+method_out$method = "cellchat"
 
 # iterate over all CT_CT combinations and append the significant interactions to the list
 for(CT_CT in names(significant_interactions))
 {
-  significant_interactions[[CT_CT]] = filter(method_out ,source_target == CT_CT ) %>% select(. , c("ligand","receptor","pval"))
+  significant_interactions[[CT_CT]] = filter(method_out ,source_target == CT_CT ) %>% select(. , c("ligand","receptor","pval","prob","method"))
 }
 
 # save file

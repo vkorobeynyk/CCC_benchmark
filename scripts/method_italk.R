@@ -22,7 +22,7 @@ target_ct_file_path <- snakemake@input[["target_ct_file"]]
 # load data #
 #############
 
-raw_counts = read.csv(path_sc_inflated_counts,sep="\t") %>% as.matrix
+inflated_counts = read.csv(path_sc_inflated_counts,sep="\t") %>% as.matrix
 metadata = read.csv(path_sc_metadata,sep="\t")
 simulated_interactions = readRDS(path_simulated_interactions)
 target_ct_file = read.table(target_ct_file_path) %>% unlist %>% as.character
@@ -31,7 +31,7 @@ target_ct_file = read.table(target_ct_file_path) %>% unlist %>% as.character
 # Preprocessing #
 #################
 
-SO = CreateSeuratObject(raw_counts, meta.data = metadata)
+SO = CreateSeuratObject(inflated_counts, meta.data = metadata)
 SO = NormalizeData(SO)
 Idents(SO) = metadata$Celltype
 

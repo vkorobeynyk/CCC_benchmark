@@ -124,7 +124,6 @@ rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
 write.table(counts, counts_processed_path , sep = "\t")
 write.table(metadata, metadata_processed_path , sep = "\t")
 saveRDS(genemetadata, genemetadata_path)
-set.seed(1)
 write.table(target_ct, target_ct_file_path , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
 
 sessionInfo()

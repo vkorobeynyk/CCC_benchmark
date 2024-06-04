@@ -18,7 +18,7 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
     # remove subunit string from the L and R vectors
     L_sample = L_sample[which(!L_sample %in% "subunit")]
     R_sample = R_sample[which(!R_sample %in% "subunit")]
-    
+
     # iterate over cell type combination
     for(tmp_CT in c("CTsender","CTreceiver"))  
     {
@@ -37,13 +37,13 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
         # set all the expression for this celltype to 0
         counts_inflated[gene ,CT_cells] = 0
         
-        gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  means_perCT$gene_names) , which(CT == colnames(means_perCT))]
+        rankGenes_acrossmethods
+        gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  rownames(means_perCT)) , which(CT == colnames(means_perCT))]
         
         gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
         mu = gene_mean * FC
         x1 = rnbinom(1000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
-        if(all(x1 == 0)) {x1 = sample(1, length(cells_to_impute), replace = T)}
-        else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
+        if(all(x1 == 0)) {x1 = sample(1, length(cells_to_impute), replace = T)} else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
         
         
         # Add the final expression to sampled zero cells
