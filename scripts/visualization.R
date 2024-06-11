@@ -46,58 +46,20 @@ datasets = config$datasets %>% unlist
 FC = config$semiSimulation$FC %>% unlist %>% as.double
 PCE = config$semiSimulation$perc_cells_expressing %>% unlist %>% as.integer
 
-diagnostic_plots_realFC = list()
-diagnostic_df_realFC = list()
-diagnostic_plots_MeanVar = list()
-for(dataset in datasets)
-{
-  file_path = file.path(path_output_dir,paste0(dataset,"_semiSimulation_NB"))
-  realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
-  
-  # Generate mean var plot of genes
-  genemetadata = readRDS(file.path("data/processed/", dataset,"genemetadata.RDS"))
-  p = ggplot(genemetadata$mean, aes(x = vars, y = means)) + geom_hex() +
-    geom_point(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=vars, y=means), colour="red", size=2) +
-    xlab("variance (log10)") +
-    ylab("mean (log10)") +
-    ggtitle(paste0("Highlighted LR genes for ",dataset))
-  
-  diagnostic_plots_MeanVar[[dataset]] = p
-  
-  params_grid = expand.grid(vector1 = FC, vector2 = PCE)
-  for(i in 1:nrow(params_grid))
-  {
-    x = params_grid[i,] %>% as.numeric ; names(x) = c("FC","PCE")
-    
-    ###########################################################
-    ##### Generate Plots of real FC after semi-simulation #####
-    ###########################################################
-    
-    realFC_aftersimulation_file = realFC_aftersimulation_files[grepl(paste0("^" , x["FC"] , "$"), str_split(realFC_aftersimulation_files, "_") %>% 
-                                                                       lapply(., "[[", 3)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(realFC_aftersimulation_files, "_") %>% lapply(., "[[", 5))]
-    
-    tmp_lst = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
-      unlist %>% subset(.,!is.infinite(.)) %>% 
-      plot_FCafter_semisimulation(. , theoreticalFC = x["FC"], PCE = x["PCE"])
-    
-    diagnostic_plots_realFC[[dataset]][[paste0("FC_",x["FC"])]][[paste0("PCE_",x["PCE"])]] = tmp_lst %>% pluck("plot")
-    
-    diagnostic_df_realFC[[dataset]][[paste0("index_",i)]] = tmp_lst[c(2,3,4)] %>% as.data.frame
-  }
-}
-
 ############################
 ##### Diagnostic plots #####
 ############################
 
 diagnostic_plots_lst = list()
 diagnostic_plots_perCT= list()
+diagnostic_plots_MeanVar = list()
+diagnostic_plots_realFC = list()
+diagnostic_df_realFC = list()
 for(dataset in datasets)
 {
   # load files
   file_path = file.path(path_output_dir,paste0(dataset,"_semiSimulation_NB"))
   inflated_counts_files = file_path %>% list.files(., pattern = "sc_inflated_counts")
-  #realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
   original_counts = read.table(file.path("data/",dataset, "raw_counts.tsv"))  # load original counts
   rownames(original_counts) = rownames(original_counts) %>% toupper()
   colnames(original_counts) = gsub("[.-]","_" , colnames(original_counts))
@@ -134,7 +96,7 @@ for(dataset in datasets)
     simulated_interactions_file = simulated_interactions_files[grepl(paste0("^" , x["FC"] , "$"), str_split(simulated_interactions_files, "_") %>% 
                                                                        lapply(., "[[", 4)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(simulated_interactions_files, "_") %>% lapply(., "[[", 6))]
     master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] = readRDS(file.path(file_path,simulated_interactions_file))
-    
+
     ########################################
     ##### Generate L/R inflated per CT #####
     ########################################
@@ -158,7 +120,46 @@ for(dataset in datasets)
     # load correct PCE file depending on the params_grid
     PCE_file = PCE_files[grepl(paste0("^" , x["FC"] , "$"), str_split(PCE_files, "_") %>% lapply(., "[[", 6)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(PCE_files, "_") %>% lapply(., "[[", 8))]
     master_lst_diagnosticPlots[[naming]][["PCE"]] = readRDS(file.path(file_path,PCE_file)) %>% unlist * 100 # transform to percentage
+    
+    ###########################################################
+    ##### Generate Plots of real FC after semi-simulation #####
+    ###########################################################
+    
+    realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
+    realFC_aftersimulation_file = realFC_aftersimulation_files[grepl(paste0("^" , x["FC"] , "$"), str_split(realFC_aftersimulation_files, "_") %>% 
+                                                                       lapply(., "[[", 3)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(realFC_aftersimulation_files, "_") %>% lapply(., "[[", 5))]
+    
+    tmp_lst = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
+      unlist %>% subset(.,!is.infinite(.)) %>% 
+      plot_FCafter_semisimulation(. , theoreticalFC = x["FC"], PCE = x["PCE"])
+    
+    diagnostic_plots_realFC[[dataset]][[paste0("FC_",x["FC"])]][[paste0("PCE_",x["PCE"])]] = tmp_lst %>% pluck("plot")
+    
+    diagnostic_df_realFC[[dataset]][[paste0("index_",i)]] = tmp_lst[c(2,3,4)] %>% as.data.frame
+    
   }
+  
+  ##################################
+  ##### Mean var plot of genes #####
+  ##################################
+  # LR sampled are the same regarding FC and PCE parameters. Meaning that we can use any master_lst_diagnosticPlots[[naming]][[CT]]
+  genemetadata = readRDS(file.path("data/processed/", dataset,"genemetadata.RDS"))
+  tmp_df_L = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[1]]] %>% unlist %>% as.character))
+  tmp_df_R = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[2]]] %>% unlist %>% as.character))
+  p = ggplot(genemetadata$mean, aes(x = vars, y = means)) + geom_hex() +
+    geom_point(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=vars, y=means), colour="red", size=2) +
+    geom_smooth(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=vars, y=means), method = "lm", color = "red") +
+    xlab("variance (log10)") +
+    ylab("mean (log10)") +
+    geom_point(data=tmp_df_L, aes(x=vars, y=means), colour="green", size=2) +
+    geom_smooth(data=tmp_df_L, aes(x=vars, y=means), method = "lm", color = "green") +
+    geom_point(data=tmp_df_R, aes(x=vars, y=means), colour="yellow", size=2) +
+    geom_smooth(data=tmp_df_R, aes(x=vars, y=means), method = "lm", color = "yellow") +
+    ggtitle(paste0("MeanVar plot of all genes | Red - Sampled random 10 genes per bin | Green - L sampled | Yellow - R sampled | DATASET - ",dataset))
+  
+  rm(tmp_df)
+  diagnostic_plots_MeanVar[[dataset]] = p
+  
   # filter original avelogcpm counts to contain same genes as the inflated count matrices
   original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$counts %>% rownames))
   
