@@ -49,7 +49,6 @@ counts = read.table(counts_processed_path)
 metadata = read.table(metadata_processed_path)
 genemetadata = readRDS(genemetadata_path)
 means_perCT = genemetadata$mean
-rownames(means_perCT) = means_perCT$gene_names
 target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
 
 '
@@ -72,6 +71,30 @@ stopifnot(colnames(counts) == metadata$cell_ID)
 message(paste("Target celltypes:" , str_flatten(target_ct, " ")))
 message(paste("Shape of count dataframe:" , str_flatten(dim(counts) , " ")))
 
+########################################################
+# remove genes with mean < Q1 in celltypes to simulate #
+########################################################
+
+x1 = summary( means_perCT[,target_ct[1]]) %>% as.list
+x2 = summary( means_perCT[,target_ct[2]]) %>% as.list
+
+bx1 = between(means_perCT[,target_ct[1]] , x1$`1st Qu.` , x1$`3rd Qu.`)
+bx2 = between(means_perCT[,target_ct[2]] , x2$`1st Qu.` , x2$`3rd Qu.`)
+
+
+gene_index = which(bx1 | bx2)
+#if(length(gene_index) > 0) {
+#  means_perCT = means_perCT[gene_index,]
+#}
+
+########################################################
+# remove genes with mean == 0 in celltypes to simulate #
+########################################################
+
+gene_index = which(means_perCT[,target_ct[1]] == 0 | means_perCT[,target_ct[2]] == 0)
+if(length(gene_index) > 0) {
+  means_perCT = means_perCT[-gene_index,]
+}
 
 #############
 # Load LRdb #
@@ -87,11 +110,11 @@ LRdb = LRdb[(LRdb$receptor %in% rownames(counts)),]
 LRdb$L_R = str_c(LRdb$ligand,"_",LRdb$receptor)
 LRdb = LRdb[!duplicated(LRdb$L_R),]
 
-message(paste("After filtering LR database," , nrow(LRdb) , "LR pairs show expression in at least 10 cells"))
-
 # filter LRdb to only contain L/R that have mean != 0
 LRdb %<>% filter(ligand %in% means_perCT$gene_names)
 LRdb %<>% filter(receptor %in% means_perCT$gene_names)
+
+message(paste("After filtering LR database," , nrow(LRdb) , "LR pairs show expression in at least 10 cells"))
 
 ###########################
 # Inflate gene expression #
@@ -160,6 +183,8 @@ for(comb_CT in combination_CT)
 }
 
 # Semi simulation
+# It may happen that a subunit of a gene has a mean parameter that is below the 1Q threshold I use. Now I use the original means for the subunits. IN theory i would have 
+# to check the parameters of every subunit and they are not in line, I would remove them
 semi_simulation_out = semi_simulate(counts = counts, simulated_interactions_lst = simulated_interactions_lst , genemetadata = genemetadata, 
                                     metadata = metadata , combination_CT = combination_CT, FC = FC, pce = perc_cells_expressing)
 
@@ -204,9 +229,9 @@ for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
   colnames(means_perCT_semisimulation) = gsub("Celltype","",colnames(means_perCT_semisimulation))
   
   means_perCT_semisimulation = means_perCT_semisimulation[order(means_perCT_semisimulation %>% rownames()),] # order based on gene names to ensure next line is correct
-  stopifnot(rownames(means_perCT_semisimulation) == rownames(means_perCT))  # make sure dataframe is order  based on gene names to ensure next line is correct
-  # error here
-  FC_after_semisimulation[[CT]] = means_perCT_semisimulation[simulated_genes,CT] / means_perCT[simulated_genes,CT]
+  
+  simulated_genes = sort(simulated_genes)
+  FC_after_semisimulation[[CT]] = means_perCT_semisimulation[simulated_genes,CT] / subset(means_perCT, gene_names %in% simulated_genes) %>% dplyr::select(CT) %>% unlist %>% as.numeric()
 }
 
 

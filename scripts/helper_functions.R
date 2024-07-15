@@ -5,6 +5,7 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
   perc_cells_expressing_lst = list()
   counts_inflated = counts
   not_inflated_cells = list()
+  means_perCT = genemetadata$mean
   
   for(comb_CT in combination_CT)
   {
@@ -12,13 +13,9 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
     CT_sender = tmp_var1[1]
     CT_receiver = tmp_var1[2]
     
-    L_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",1) %>% as.character
-    R_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",2) %>% as.character
+    L_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",1) %>% as.character %>% setdiff("subunit") # remove subunit string from the L and R vectors
+    R_sample = simulated_interactions_lst[[comb_CT]] %>% str_split("_") %>% lapply(.,"[[",2) %>% as.character %>% setdiff("subunit")
     
-    # remove subunit string from the L and R vectors
-    L_sample = L_sample[which(!L_sample %in% "subunit")]
-    R_sample = R_sample[which(!R_sample %in% "subunit")]
-
     # iterate over cell type combination
     for(tmp_CT in c("CTsender","CTreceiver"))  
     {
@@ -32,24 +29,24 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
       #save the inflated cells for estimating mean
       not_inflated_cells[[comb_CT]][[CT]] = setdiff(CT_cells, cells_to_impute)
       # Iterate over every gene (L/R) depending on the CT and inflate expression
-      for(gene in genes_to_sample)
+      for(gene_sample in genes_to_sample)
       {
         # set all the expression for this celltype to 0
-        counts_inflated[gene ,CT_cells] = 0
+        counts_inflated[gene_sample ,CT_cells] = 0
         
-        gene_mean = means_perCT[grep(paste("^",gene,"$", sep=""),  rownames(means_perCT)) , which(CT == colnames(means_perCT))]
+        gene_mean = means_perCT[grep(paste("^",gene_sample,"$", sep=""),  means_perCT$gene_names) , which(CT == colnames(means_perCT))]
         
-        gene_dispersion = genemetadata$disp$edgeR_dispersion[which(rownames(counts) %in% gene)]
+        gene_dispersion = subset(genemetadata$disp, gene == gene_sample) %>% select(edgeR_dispersion) %>% as.numeric
         mu = gene_mean * FC
         x1 = rnbinom(1000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
         if(all(x1 == 0)) {x1 = sample(1, length(cells_to_impute), replace = T)} else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
         
         
         # Add the final expression to sampled zero cells
-        counts_inflated[gene ,cells_to_impute] = x1
+        counts_inflated[gene_sample ,cells_to_impute] = x1
         # save the % of cells expressing the gene
-        perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] =  table(counts_inflated[gene ,CT_cells]>0)["TRUE"] / length(counts_inflated[gene ,CT_cells])
-        if(is.na(perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]])) {perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene]] = 0}
+        perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]] =  table(counts_inflated[gene_sample ,CT_cells]>0)["TRUE"] / length(counts_inflated[gene_sample ,CT_cells])
+        if(is.na(perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]])) {perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]] = 0}
         
       }
     }

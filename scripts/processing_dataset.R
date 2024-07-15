@@ -77,19 +77,6 @@ colnames(means_perCT) = colnames(mm)
 colnames(means_perCT) = gsub("Celltype","",colnames(means_perCT))
 rownames(means_perCT) %<>% toupper
 
-########################################################
-# remove genes with mean == 0 in celltypes to simulate #
-########################################################
-
-gene_index = which(means_perCT[,target_ct[1]] == 0 | means_perCT[,target_ct[2]] == 0)
-if(length(gene_index) > 0) {
-  means_perCT = means_perCT[-gene_index,]
-  counts = counts[-gene_index,] # remove in counts
-  dge = dge[-gene_index,]
-}
-
-stopifnot(rownames(means_perCT) == rownames(counts))
-
 ######################################
 # draw genes from mean-variance plot #
 ######################################
@@ -113,7 +100,7 @@ for(bin in 1:length(meanvar_relationship$bin.means))
 # Update gene metadata file #
 #############################
 
-genemetadata = list( disp = data.frame(gene = rownames(counts) , edgeR_dispersion = dge$tagwise.dispersion) ,
+genemetadata = list( disp = data.frame(gene = rownames(dge) , edgeR_dispersion = dge$tagwise.dispersion) ,
                       mean = means_perCT %>% as.data.frame )
 genemetadata$mean$gene_names = genemetadata$mean %>% rownames()
 genemetadata$mean = merge(genemetadata$mean, df, by = "gene_names") # add mean and variance info

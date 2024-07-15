@@ -86,20 +86,18 @@ for(dataset in datasets)
     x = params_grid[i,] %>% as.numeric ; names(x) = c("FC","PCE")
     
     naming = paste0("FC_",x["FC"],"_PCE_",x["PCE"])
-    
     # load correct count file depending on the params_grid
-    counts_file = inflated_counts_files[grepl(paste0("^" , x["FC"] , "$"), str_split(inflated_counts_files, "_") %>% lapply(., "[[", 5)) & 
-                                          grepl(paste0("^" , x["PCE"] , ".tsv$"), str_split(inflated_counts_files, "_") %>% lapply(., "[[", 7))]
+    counts_file = inflated_counts_files[grepl(paste0("_" , x["FC"] , "_", ".*",x["PCE"] , ".tsv$"), inflated_counts_files)]
     master_lst_diagnosticPlots[[naming]][["counts"]] = read.table(file.path(file_path,counts_file))
     
     # load correct simulated interactions file depending on the params_grid
-    simulated_interactions_file = simulated_interactions_files[grepl(paste0("^" , x["FC"] , "$"), str_split(simulated_interactions_files, "_") %>% 
-                                                                       lapply(., "[[", 4)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(simulated_interactions_files, "_") %>% lapply(., "[[", 6))]
+    simulated_interactions_file = simulated_interactions_files[grepl(paste0("_" , x["FC"] , "_",".*",x["PCE"] , ".RDS$"), simulated_interactions_files)]
     master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] = readRDS(file.path(file_path,simulated_interactions_file))
 
     ########################################
     ##### Generate L/R inflated per CT #####
     ########################################
+    # It is written in this more "messy" way for cases when we are testing for multiple sender-receiver cells
     CT_present = names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_")  %>% unlist %>% unique
     for(CT in CT_present)
     {
@@ -118,16 +116,14 @@ for(dataset in datasets)
     }
     
     # load correct PCE file depending on the params_grid
-    PCE_file = PCE_files[grepl(paste0("^" , x["FC"] , "$"), str_split(PCE_files, "_") %>% lapply(., "[[", 6)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(PCE_files, "_") %>% lapply(., "[[", 8))]
+    PCE_file = PCE_files[grepl(paste0("_" , x["FC"] , "_", ".*", x["PCE"] , ".RDS$"), PCE_files)]
     master_lst_diagnosticPlots[[naming]][["PCE"]] = readRDS(file.path(file_path,PCE_file)) %>% unlist * 100 # transform to percentage
     
     ###########################################################
     ##### Generate Plots of real FC after semi-simulation #####
     ###########################################################
     
-    realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation")
-    realFC_aftersimulation_file = realFC_aftersimulation_files[grepl(paste0("^" , x["FC"] , "$"), str_split(realFC_aftersimulation_files, "_") %>% 
-                                                                       lapply(., "[[", 3)) & grepl(paste0("^" , x["PCE"] , ".RDS$"), str_split(realFC_aftersimulation_files, "_") %>% lapply(., "[[", 5))]
+    realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation") %>% grepl(paste0("_",x["FC"] , "_" ,".*",x["PCE"] , ".RDS$"), .) 
     
     tmp_lst = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
       unlist %>% subset(.,!is.infinite(.)) %>% 
@@ -146,15 +142,15 @@ for(dataset in datasets)
   genemetadata = readRDS(file.path("data/processed/", dataset,"genemetadata.RDS"))
   tmp_df_L = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[1]]] %>% unlist %>% as.character))
   tmp_df_R = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[2]]] %>% unlist %>% as.character))
-  p = ggplot(genemetadata$mean, aes(x = vars, y = means)) + geom_hex() +
-    geom_point(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=vars, y=means), colour="red", size=2) +
-    geom_smooth(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=vars, y=means), method = "lm", color = "red") +
+  p = ggplot(genemetadata$mean, aes(x = means, y = vars)) + geom_hex() +
+    geom_point(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=means, y=vars), colour="red", size=2) +
+    geom_smooth(data=genemetadata$mean[genemetadata$mean$gene_to_use,], aes(x=means, y=vars), method = "lm", color = "red") +
     xlab("variance (log10)") +
     ylab("mean (log10)") +
-    geom_point(data=tmp_df_L, aes(x=vars, y=means), colour="green", size=2) +
-    geom_smooth(data=tmp_df_L, aes(x=vars, y=means), method = "lm", color = "green") +
-    geom_point(data=tmp_df_R, aes(x=vars, y=means), colour="yellow", size=2) +
-    geom_smooth(data=tmp_df_R, aes(x=vars, y=means), method = "lm", color = "yellow") +
+    geom_point(data=tmp_df_L, aes(x=means, y=vars), colour="green", size=2) +
+    geom_smooth(data=tmp_df_L, aes(x=means, y=vars), method = "lm", color = "green") +
+    geom_point(data=tmp_df_R, aes(x=means, y=vars), colour="yellow", size=2) +
+    geom_smooth(data=tmp_df_R, aes(x=means, y=vars), method = "lm", color = "yellow") +
     ggtitle(paste0("MeanVar plot of all genes | Red - Sampled random 10 genes per bin | Green - L sampled | Yellow - R sampled | DATASET - ",dataset))
   
   rm(tmp_df)
@@ -207,16 +203,14 @@ for(dataset in datasets)
     for(file in CT_statistics_files)
     {
       master_lst_precision_recall[[file]] = read.csv((file.path(path_output_dir,dataset,"metrics/",method,file))) %>% unlist
-      master_lst_precision_recall[[file]] = master_lst_precision_recall[[file]][c(1,2,3)] # remove the f1score
-      
     }
     
     ###############################################################################
     ##### Ranking of LR genes across top 25% of significant hits from methods #####
     ###############################################################################
     tmp_ranking_LRgenes_lst = list()
-    ranking_LRgenes_files = file.path(path_output_dir,dataset,"metrics/",method) %>%
-      list.files(., pattern = "ranking_LRgenes")
+    ranking_LRgenes_files = file.path(path_output_dir,dataset,"metrics/",method) %>% list.files(., pattern = "ranking_LRgenes")
+    
     for(file in ranking_LRgenes_files)
     {
       tmp_ranking_LRgenes_lst[[file]] = read.csv((file.path(path_output_dir,dataset,"metrics/",method,file))) 
@@ -244,15 +238,11 @@ for(dataset in datasets)
     }
     rm(tmp_diagnostic_df_realFC)
     
-    statistics_results_lst_recallprecision_plot[[dataset]][[method]]$FC = FC_real
-    statistics_results_lst_recallprecision_plot[[dataset]][[method]]$PCE = PCE
-    statistics_results_lst_recallprecision_plot[[dataset]][[method]]$method = method
+    statistics_results_lst_recallprecision_plot[[dataset]][[method]] %<>% mutate(.,FC = FC_real, PCE = PCE, method = method)
   }
 
   # for precision recall plots
-  tmp = do.call(rbind, statistics_results_lst_recallprecision_plot[[dataset]])
-  tmp$dataset = dataset
-  statistics_results_lst_recallprecision_plot[[dataset]] = tmp
+  statistics_results_lst_recallprecision_plot[[dataset]] = do.call(rbind, statistics_results_lst_recallprecision_plot[[dataset]]) %>% mutate(., dataset = dataset)
   
   # Add FC and PCE info for ranking LR genes plot 
   ranking_LRgenes_lst_plot[[dataset]] = ranking_LRgenes_lst_plot[[dataset]] %>% do.call(rbind,.) %>%
@@ -313,7 +303,7 @@ for(dataset in datasets)
     geom_point() +
     geom_line() +
     facet_grid(~PCE) +
-    ggtitle("Faceted by PCE . Ration - n_simulated_LR in top25%_significant_LR")
+    ggtitle("Faceted by PCE . Ratio - n_simulated_LR in top25%_significant_LR")
   
   ##### Save plots
   pdf(file.path(path_results_dir ,paste0(dataset, "_recall_precision_plots.pdf")), width = 12, height = 7)
