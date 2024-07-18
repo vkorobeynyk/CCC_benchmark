@@ -69,7 +69,7 @@ dge <- edgeR::calcNormFactors(dge)
 # estimating mu
 centered.off <- edgeR::getOffset(dge)  
 centered.off <- centered.off - mean(centered.off) 
-logmeans <- edgeR::mglmOneWay(dge$counts, offset = centered.off, design = mm,
+logmeans <- edgeR::mglmOneWay(dge$counts, offset = 0, design = mm,
                                 dispersion = dge$tagwise.dispersion) 
 
 means_perCT = exp(logmeans$coefficients)

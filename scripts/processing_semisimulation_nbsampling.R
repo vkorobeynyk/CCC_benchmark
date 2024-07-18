@@ -52,11 +52,11 @@ means_perCT = genemetadata$mean
 target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
 
 '
-counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x//counts_10x_processed.tsv")
-metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x//metadata_10x_processed.tsv")
-genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/genemetadata.RDS")
+counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/counts_VASAseq_processed.tsv")
+metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/metadata_VASAseq_processed.tsv")
+genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/genemetadata.RDS")
 means_perCT = genemetadata$mean
-target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x//target_ct_file.tsv") %>% unlist %>% as.character
+target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/target_ct_file.tsv") %>% unlist %>% as.character
 '
 
 # check if cell names of counts and metadata correspond and are in the same order
@@ -72,6 +72,7 @@ message(paste("Target celltypes:" , str_flatten(target_ct, " ")))
 message(paste("Shape of count dataframe:" , str_flatten(dim(counts) , " ")))
 
 ########################################################
+#                      NOT USED                        #
 # remove genes with mean < Q1 in celltypes to simulate #
 ########################################################
 
@@ -119,7 +120,7 @@ message(paste("After filtering LR database," , nrow(LRdb) , "LR pairs show expre
 ###########################
 # Inflate gene expression #
 ###########################
-set.seed(3)
+set.seed(1)
 combination_CT = str_flatten(target_ct,"_")
 simulated_interactions_lst = list()
 
@@ -212,6 +213,9 @@ for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
   
   # update model matrix
   metadata2 = metadata %>% filter(cell_ID %in% cells_to_keep) # filter metadata
+  
+  stopifnot(metadata2$cell_ID == colnames(tmp_dge)) # just for security
+  
   mm= model.matrix(as.formula("~0 + Celltype") , metadata2)
   
   # Estimate disp
@@ -221,17 +225,16 @@ for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
   # estimating mu
   centered.off <- edgeR::getOffset(tmp_dge)  
   centered.off <- centered.off - mean(centered.off) 
-  logmeans <- edgeR::mglmOneWay(tmp_dge$counts, offset = centered.off, design = mm,
+  logmeans <- edgeR::mglmOneWay(tmp_dge$counts, offset = 0, design = mm,
                                 dispersion = tmp_dge$tagwise.dispersion) 
   
   means_perCT_semisimulation = exp(logmeans$coefficients) %>% as.data.frame
   colnames(means_perCT_semisimulation) = colnames(mm)
   colnames(means_perCT_semisimulation) = gsub("Celltype","",colnames(means_perCT_semisimulation))
+  means_perCT_semisimulation$gene_names = rownames(means_perCT_semisimulation)
   
-  means_perCT_semisimulation = means_perCT_semisimulation[order(means_perCT_semisimulation %>% rownames()),] # order based on gene names to ensure next line is correct
-  
-  simulated_genes = sort(simulated_genes)
-  FC_after_semisimulation[[CT]] = means_perCT_semisimulation[simulated_genes,CT] / subset(means_perCT, gene_names %in% simulated_genes) %>% dplyr::select(CT) %>% unlist %>% as.numeric()
+  FC_after_semisimulation[[CT]] = means_perCT_semisimulation %>% arrange(., gene_names) %>% filter(.,gene_names %in% simulated_genes) %>% .[CT] / 
+    means_perCT %>% arrange(., gene_names) %>% filter(.,gene_names %in% simulated_genes) %>% .[CT]
 }
 
 

@@ -34,19 +34,26 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
         # set all the expression for this celltype to 0
         counts_inflated[gene_sample ,CT_cells] = 0
         
-        gene_mean = means_perCT[grep(paste("^",gene_sample,"$", sep=""),  means_perCT$gene_names) , which(CT == colnames(means_perCT))]
+        gene_mean = means_perCT[grep(paste("^",gene_sample,"$", sep=""),  means_perCT$gene_names),] %>% .[CT] %>% as.numeric()
         
-        gene_dispersion = subset(genemetadata$disp, gene == gene_sample) %>% select(edgeR_dispersion) %>% as.numeric
+        gene_dispersion = genemetadata$disp %>% subset(gene == gene_sample) %>% select(edgeR_dispersion) %>% as.numeric
         mu = gene_mean * FC
         x1 = rnbinom(1000, mu = mu, size = 1/gene_dispersion) # shape parameter of the gamma mixing distribution
-        if(all(x1 == 0)) {x1 = sample(1, length(cells_to_impute), replace = T)} else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
+        # replace the expression for the CT according to the sampled values
+        # in case there are not enough sampled values > 0 then sample from the > 0 values with replacement
+        if(length(x1[x1>0]) > length(cells_to_impute)) {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = F)
+        } else if(all(x1 == 0)) {x1 = sample(1 , length(cells_to_impute), replace = T)
+        } else {x1 = sample(x1[x1>0] , length(cells_to_impute), replace = T)}
         
         
         # Add the final expression to sampled zero cells
         counts_inflated[gene_sample ,cells_to_impute] = x1
+        
         # save the % of cells expressing the gene
         perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]] =  table(counts_inflated[gene_sample ,CT_cells]>0)["TRUE"] / length(counts_inflated[gene_sample ,CT_cells])
-        if(is.na(perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]])) {perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]] = 0}
+        
+        # probably remove -> old implementation | as the should be any na since we set a hard threshold on PCE
+        #if(is.na(perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]])) {perc_cells_expressing_lst[[comb_CT]][[paste0(tmp_CT, "_" ,CT)]][[gene_sample]] = 0}
         
       }
     }
@@ -90,7 +97,7 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
       genes_to_plot = genes_to_plot %>% unlist %>% unique
       
       # filter the inflated counts based to contain cells belonging to the celltype indicated by CT_toPlot
-      tmp_counts = master_lst[[x]][["counts"]][,metadata$Celltype %in% CT_toPlot]
+      tmp_counts = master_lst[[x]][["inflated_counts"]][,metadata$Celltype %in% CT_toPlot]
       counts_aveLogCPM = aveLogCPM(tmp_counts)
       
       current_FC = str_split( x,"_") %>% lapply(., "[[", 2) %>% unlist

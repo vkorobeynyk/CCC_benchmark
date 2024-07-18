@@ -9,6 +9,8 @@ library(edgeR)
 library(ggrepel)
 library(reshape2)
 library(purrr)
+library(magrittr)
+library(plyr)
 source("scripts/helper_functions.R")
 
 # Get list with command line arguments by name
@@ -55,6 +57,7 @@ diagnostic_plots_perCT= list()
 diagnostic_plots_MeanVar = list()
 diagnostic_plots_realFC = list()
 diagnostic_df_realFC = list()
+diagnostic_gene_densityPlots = list()
 for(dataset in datasets)
 {
   # load files
@@ -86,17 +89,22 @@ for(dataset in datasets)
     x = params_grid[i,] %>% as.numeric ; names(x) = c("FC","PCE")
     
     naming = paste0("FC_",x["FC"],"_PCE_",x["PCE"])
+    
     # load correct count file depending on the params_grid
-    counts_file = inflated_counts_files[grepl(paste0("_" , x["FC"] , "_", ".*",x["PCE"] , ".tsv$"), inflated_counts_files)]
-    master_lst_diagnosticPlots[[naming]][["counts"]] = read.table(file.path(file_path,counts_file))
+    inflated_counts_file = inflated_counts_files %>% extract(grepl(paste0("_" , x["FC"] , "_", ".*",x["PCE"] , ".tsv$"), inflated_counts_files))
+    master_lst_diagnosticPlots[[naming]][["inflated_counts"]] = read.table(file.path(file_path,inflated_counts_file))
     
     # load correct simulated interactions file depending on the params_grid
-    simulated_interactions_file = simulated_interactions_files[grepl(paste0("_" , x["FC"] , "_",".*",x["PCE"] , ".RDS$"), simulated_interactions_files)]
+    simulated_interactions_file = simulated_interactions_files %>% extract(grepl(paste0("_" , x["FC"] , "_",".*",x["PCE"] , ".RDS$"), simulated_interactions_files))
     master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] = readRDS(file.path(file_path,simulated_interactions_file))
-
+    
+    # load correct PCE file depending on the params_grid
+    PCE_file = PCE_files[grepl(paste0("_" , x["FC"] , "_", ".*", x["PCE"] , ".RDS$"), PCE_files)]
+    master_lst_diagnosticPlots[[naming]][["PCE"]] = readRDS(file.path(file_path,PCE_file)) %>% unlist * 100 # transform to percentage
+    
     ########################################
     ##### Generate L/R inflated per CT #####
-    ########################################
+    
     # It is written in this more "messy" way for cases when we are testing for multiple sender-receiver cells
     CT_present = names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_")  %>% unlist %>% unique
     for(CT in CT_present)
@@ -115,15 +123,45 @@ for(dataset in datasets)
       master_lst_diagnosticPlots[[naming]][[CT]] = list(L = L_genes_inflated_per_CT_to_keep %>% unique , R = R_genes_inflated_per_CT_to_keep %>% unique)
     }
     
-    # load correct PCE file depending on the params_grid
-    PCE_file = PCE_files[grepl(paste0("_" , x["FC"] , "_", ".*", x["PCE"] , ".RDS$"), PCE_files)]
-    master_lst_diagnosticPlots[[naming]][["PCE"]] = readRDS(file.path(file_path,PCE_file)) %>% unlist * 100 # transform to percentage
+    ####################################################################
+    ##### Generate density plots of simulated genes b/a simulation #####
+    
+    for(CT in CT_present)
+    {
+      # check if cellnames are ordered
+      stopifnot(metadata$cell_ID == colnames(master_lst_diagnosticPlots[[naming]][["inflated_counts"]]))
+      
+      set.seed(1)
+      gene_names = master_lst_diagnosticPlots[[naming]][[CT]] %>% unlist %>% sample(.,9) # sample only 9 genes as the report will contain only 9
+      
+      for(gene in gene_names)
+      {
+        # create df with counts of inflated and original count matrices
+        tmp_df = data.frame(inflated_counts = master_lst_diagnosticPlots[[naming]][["inflated_counts"]][gene,metadata$Celltype == CT] %>% as.numeric,
+                            original_counts = original_counts[gene,metadata$Celltype == CT] %>% as.numeric) %>% melt
+        
+        # calculate mean value for both counts
+        mu <- ddply(tmp_df, "variable", summarise, grp.mean=mean(value))
+        
+        p = ggplot(tmp_df, aes(x=value, color=variable)) +
+          geom_density()+
+          geom_vline(data=mu, aes(xintercept=grp.mean, color=variable),
+                     linetype="dashed") +
+          ggtitle(paste0("density plots of counts | lines are the mean value | FC:", x["FC"], "  PCE:",x["PCE"], "  gene:", gene)) +
+          theme(plot.title = element_text(size = 7, face = "bold"),
+                axis.title.x=element_blank(),
+                axis.title.y=element_blank(),
+                legend.title=element_blank(),
+                axis.text=element_text(size=6)) 
+        
+        diagnostic_gene_densityPlots[[dataset]][[naming]][[CT]][[gene]] = p
+      }
+    }
     
     ###########################################################
     ##### Generate Plots of real FC after semi-simulation #####
-    ###########################################################
     
-    realFC_aftersimulation_files = file_path %>% list.files(., pattern = "realFC_aftersimulation") %>% grepl(paste0("_",x["FC"] , "_" ,".*",x["PCE"] , ".RDS$"), .) 
+    realFC_aftersimulation_file = file_path %>% list.files(., pattern = "realFC_aftersimulation") %>% extract(grepl(paste0("_",x["FC"] , "_" ,".*",x["PCE"] , ".RDS$"), .))
     
     tmp_lst = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
       unlist %>% subset(.,!is.infinite(.)) %>% 
@@ -137,8 +175,8 @@ for(dataset in datasets)
   
   ##################################
   ##### Mean var plot of genes #####
-  ##################################
-  # LR sampled are the same regarding FC and PCE parameters. Meaning that we can use any master_lst_diagnosticPlots[[naming]][[CT]]
+
+    # LR sampled are the same regarding FC and PCE parameters. Meaning that we can use any master_lst_diagnosticPlots[[naming]][[CT]]
   genemetadata = readRDS(file.path("data/processed/", dataset,"genemetadata.RDS"))
   tmp_df_L = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[1]]] %>% unlist %>% as.character))
   tmp_df_R = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[2]]] %>% unlist %>% as.character))
@@ -153,11 +191,10 @@ for(dataset in datasets)
     geom_smooth(data=tmp_df_R, aes(x=means, y=vars), method = "lm", color = "yellow") +
     ggtitle(paste0("MeanVar plot of all genes | Red - Sampled random 10 genes per bin | Green - L sampled | Yellow - R sampled | DATASET - ",dataset))
   
-  rm(tmp_df)
   diagnostic_plots_MeanVar[[dataset]] = p
   
   # filter original avelogcpm counts to contain same genes as the inflated count matrices
-  original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$counts %>% rownames))
+  original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$inflated_counts %>% rownames))
   
   diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
                                                              FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
@@ -169,7 +206,8 @@ for(dataset in datasets)
   #                                                             FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
 }
 
-############################### Diagnostic plots
+######################
+##### Save plots #####
 for(dataset in datasets)
 {
   pdf(file.path(path_results_dir ,paste0(dataset, "_diagnostic_plots.pdf")), width = 12, height = 7)
@@ -181,6 +219,11 @@ for(dataset in datasets)
   x = 1:length(diagnostic_plots_realFC[[dataset]])
   sapply(x, function(x) {do.call(ggarrange,diagnostic_plots_realFC[[dataset]][[x]]) %>% print}) %>% print
   diagnostic_plots_MeanVar[[dataset]] %>% print
+  
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[1]][[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[2]][[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[3]][[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[4]][[1]], common.legend = TRUE)) %>% print
   dev.off()
 }
 
@@ -207,7 +250,7 @@ for(dataset in datasets)
     
     ###############################################################################
     ##### Ranking of LR genes across top 25% of significant hits from methods #####
-    ###############################################################################
+    
     tmp_ranking_LRgenes_lst = list()
     ranking_LRgenes_files = file.path(path_output_dir,dataset,"metrics/",method) %>% list.files(., pattern = "ranking_LRgenes")
     
@@ -251,7 +294,6 @@ for(dataset in datasets)
 
   ##########################################
   ##### Generate Precision recall plot #####
-  ##########################################
   
   PCE = as.factor(statistics_results_lst_recallprecision_plot[[dataset]]$PCE)
   FC = as.factor(statistics_results_lst_recallprecision_plot[[dataset]]$FC)
@@ -279,7 +321,6 @@ for(dataset in datasets)
 
   ##################################
   ##### Generate f1 score plot #####
-  ##################################
   
   tmp_df = statistics_results_lst_recallprecision_plot[[dataset]]
   p1 = ggplot(tmp_df, aes(x = PCE, y = f1score, color = method)) + 
@@ -296,7 +337,6 @@ for(dataset in datasets)
   
   ##########################################
   ##### Generate ranking LR genes plot #####
-  ##########################################
   
   tmp_df = ranking_LRgenes_lst_plot[[dataset]]
   p3 = ggplot(tmp_df, aes(x = FC, y = ratio, color = method)) + 
