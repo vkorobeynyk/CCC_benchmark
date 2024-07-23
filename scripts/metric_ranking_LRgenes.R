@@ -33,7 +33,7 @@ names(significant_interactions) = significant_interactions %>% names %>% gsub( "
 #############################################
 ##### Generating a ranking for LR genes #####
 #############################################
-# By ranking I mean select 25% of genes with highest logFC and then check how many of those pairs we simulated
+# By ranking I mean select 25% of genes with highest logFC (for example) and then check how many of those pairs we simulated
 
 lst_score_perCTCT = list()
 # extract all possible CTs combinations
