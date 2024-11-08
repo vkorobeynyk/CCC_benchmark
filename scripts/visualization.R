@@ -8,9 +8,10 @@ library(stringr)
 library(edgeR)
 library(ggrepel)
 library(reshape2)
-library(purrr)
+library(purrr) 
 library(magrittr)
 library(plyr)
+library(liana)
 source("scripts/helper_functions.R")
 
 # Get list with command line arguments by name
@@ -31,10 +32,11 @@ if (is.null(opt$config.yaml) | is.null(opt$path_output_dir) | is.null(opt$path_r
 }
 
 # Call the argument
-path_config.yaml <- opt$config.yaml
-path_output_dir <- opt$path_output_dir
-path_results_dir <- opt$path_results_dir
+path_config.yaml = opt$config.yaml
+path_output_dir = opt$path_output_dir
+path_results_dir = opt$path_results_dir
 dir.create(path_results_dir)
+dir.create(file.path(path_output_dir,"countsimQC"))
 
 ########################################
 ##### Loading and processing files #####
@@ -58,6 +60,7 @@ diagnostic_plots_MeanVar = list()
 diagnostic_plots_realFC = list()
 diagnostic_df_realFC = list()
 diagnostic_gene_densityPlots = list()
+countsimQC_report_lst = list()
 for(dataset in datasets)
 {
   # load files
@@ -66,6 +69,10 @@ for(dataset in datasets)
   original_counts = read.table(file.path("data/",dataset, "raw_counts.tsv"))  # load original counts
   rownames(original_counts) = rownames(original_counts) %>% toupper()
   colnames(original_counts) = gsub("[.-]","_" , colnames(original_counts))
+  
+  # LOad OMnipath LRdb -> used for countsimQC filtering
+  LRdb = select_filter_LRdbgenes(original_counts)
+  
   PCE_files = file_path %>% list.files(., pattern = "perc_cells_expressing_perGene")
   simulated_interactions_files = file_path %>% list.files(., pattern = "simulated_interactions")
   
@@ -92,7 +99,7 @@ for(dataset in datasets)
     
     # load correct count file depending on the params_grid
     inflated_counts_file = inflated_counts_files %>% extract(grepl(paste0("_" , x["FC"] , "_", ".*",x["PCE"] , ".tsv$"), inflated_counts_files))
-    master_lst_diagnosticPlots[[naming]][["inflated_counts"]] = read.table(file.path(file_path,inflated_counts_file))
+    inflated_counts = read.table(file.path(file_path,inflated_counts_file))
     
     # load correct simulated interactions file depending on the params_grid
     simulated_interactions_file = simulated_interactions_files %>% extract(grepl(paste0("_" , x["FC"] , "_",".*",x["PCE"] , ".RDS$"), simulated_interactions_files))
@@ -123,13 +130,22 @@ for(dataset in datasets)
       master_lst_diagnosticPlots[[naming]][[CT]] = list(L = L_genes_inflated_per_CT_to_keep %>% unique , R = R_genes_inflated_per_CT_to_keep %>% unique)
     }
     
+    ########################################
+    ##### For countsimQC report #####
+    total_nLRgenes = unique(LRdb$ligand,LRdb$receptor)
+    
+    if((i %% 2) == 0) # 1  is for 1 %% 11 
+    {
+      countsimQC_report_lst[[dataset]][[naming]] = inflated_counts %>%  filter(rownames(.) %in% total_nLRgenes) %>% select(., which(metadata$Celltype %in% CT_present))
+    }
+    
     ####################################################################
     ##### Generate density plots of simulated genes b/a simulation #####
     
     for(CT in CT_present)
     {
       # check if cellnames are ordered
-      stopifnot(metadata$cell_ID == colnames(master_lst_diagnosticPlots[[naming]][["inflated_counts"]]))
+      stopifnot(metadata$cell_ID == colnames(inflated_counts))
       
       set.seed(1)
       gene_names = master_lst_diagnosticPlots[[naming]][[CT]] %>% unlist %>% sample(.,12) # sample only 9 genes as the report will contain only 9
@@ -137,18 +153,18 @@ for(dataset in datasets)
       for(gene in gene_names)
       {
         # create df with counts of inflated and original count matrices
-        tmp_df = data.frame(inflated_counts = master_lst_diagnosticPlots[[naming]][["inflated_counts"]][gene,metadata$Celltype == CT] %>% as.numeric,
+        tmp_df = data.frame(inflated_counts = inflated_counts[gene,metadata$Celltype == CT] %>% as.numeric,
                             original_counts = original_counts[gene,metadata$Celltype == CT] %>% as.numeric) %>% melt
         
         # calculate mean value for both counts
-        mu <- ddply(tmp_df, "variable", summarise, grp.mean=mean(value))
+        mu = ddply(tmp_df, "variable", summarise, grp.mean=mean(value))
         
         p = ggplot(tmp_df, aes(x=value, color=variable)) +
           geom_density()+
           geom_vline(data=mu, aes(xintercept=grp.mean, color=variable),
                      linetype="dashed") +
-          ggtitle(paste0("density plots of counts | lines are the mean value | FC:", x["FC"], "  PCE:",x["PCE"], "  gene:", gene)) +
-          theme(plot.title = element_text(size = 7, face = "bold"),
+          ggtitle(paste0("density of counts | lines are the mean | FC:", x["FC"], " PCE:",x["PCE"], " gene:", gene)) +
+          theme(plot.title = element_text(size = 5, face = "bold"),
                 axis.title.x=element_blank(),
                 axis.title.y=element_blank(),
                 legend.title=element_blank(),
@@ -171,8 +187,22 @@ for(dataset in datasets)
     
     diagnostic_df_realFC[[dataset]][[paste0("index_",i)]] = tmp_lst[c(2,3,4)] %>% as.data.frame
     
+    ##########################
+    ##### Save AvelogCPM #####
+    # filter the inflated counts based to contain cells belonging to the celltype indicated by CT_toPlot
+    # This is for "compute_diagnostic_plots" function in order to save memory instead of saving entire inflated counts
+    master_lst_diagnosticPlots[[naming]][["counts_aveLogCPM"]] = inflated_counts[,metadata$Celltype %in% CT_present[1]] %>% aveLogCPM
+    names(master_lst_diagnosticPlots[[naming]][["counts_aveLogCPM"]]) = rownames(inflated_counts)
   }
   
+  # save original counts for the countsimQC report
+  # We are taking all LR existent in the inflated counts because thats a filtered dataset
+  # Original counts has many genes that get filtered upon initial preprocessing
+  countsimQC_report_lst[[dataset]][["original_counts"]] = original_counts %>% 
+    filter(rownames(.) %in% rownames(inflated_counts)) %>%  
+    filter(rownames(.) %in% total_nLRgenes) %>% 
+    select(., which(metadata$Celltype %in% CT_present))
+    
   ##################################
   ##### Mean var plot of genes #####
 
@@ -194,16 +224,16 @@ for(dataset in datasets)
   diagnostic_plots_MeanVar[[dataset]] = p
   
   # filter original avelogcpm counts to contain same genes as the inflated count matrices
-  original_counts = original_counts %>% subset(rownames(original_counts) %in% (master_lst_diagnosticPlots[[1]]$inflated_counts %>% rownames))
+  original_counts = original_counts %>% subset(rownames(original_counts) %in% rownames(inflated_counts))
   
   #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
   #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
   #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
   #                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
-  diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                             FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
+  #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
+  #                                                           FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
   diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                               FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
+                                                               FC_param = FC[c(min(FC),median(FC),max(FC))], PCE_param = PCE[c(min(PCE),median(PCE),max(PCE))], dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
 }
 
 ######################
@@ -211,8 +241,8 @@ for(dataset in datasets)
 for(dataset in datasets)
 {
   pdf(file.path(path_results_dir ,paste0(dataset, "_diagnostic_plots.pdf")), width = 12, height = 7)
-  do.call(ggarrange,c(diagnostic_plots_lst[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE)) %>% print
-  do.call(ggarrange,diagnostic_plots_lst[[dataset]]$PCE_fixedPCE) %>% print
+  #do.call(ggarrange,c(diagnostic_plots_lst[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE)) %>% print
+  #do.call(ggarrange,diagnostic_plots_lst[[dataset]]$PCE_fixedPCE) %>% print
   do.call(ggarrange,c(diagnostic_plots_perCT[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE)) %>% print
   do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$PCE_fixedPCE) %>% print
   
@@ -220,10 +250,18 @@ for(dataset in datasets)
   sapply(x, function(x) {do.call(ggarrange,diagnostic_plots_realFC[[dataset]][[x]]) %>% print}) %>% print
   diagnostic_plots_MeanVar[[dataset]] %>% print
   
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[1]][[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[2]][[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[3]][[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]][[4]][[1]], common.legend = TRUE)) %>% print
+  
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.001_PCE_10[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.001_PCE_50[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_10[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_50[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_10_PCE_10[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_10_PCE_50[[1]], common.legend = TRUE)) %>% print
+  
+  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_5[[1]], common.legend = TRUE)) %>% print
+  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_10_PCE_10[[1]], common.legend = TRUE)) %>% print
+  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_20_PCE_30[[1]], common.legend = TRUE)) %>% print
+  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_40_PCE_50[[1]], common.legend = TRUE)) %>% print
   dev.off()
 }
 
@@ -232,7 +270,6 @@ for(dataset in datasets)
 ##################################
 
 # plot TPR/sensitivity/recall
-#statistics_results_lst = list()
 statistics_results_lst_recallprecision_plot = list()
 master_lst_precision_recall = list()
 ranking_LRgenes_lst_plot = list()
@@ -353,3 +390,22 @@ for(dataset in datasets)
   p3 %>% print
   dev.off()
 }
+
+
+################################################################
+##### Generate QC plots of original datasets and simulated #####
+################################################################
+
+'
+for(dataset in datasets)
+{
+  countsimQCReport(ddsList = countsimQC_report_lst[[dataset]], outputFile = paste0(dataset, "_technicalInformation_onlyLRgenes_countsimQC.html"),
+                   outputDir = file.path(path_output_dir,"countsimQC/"), outputFormat = "html_document", 
+                   showCode = FALSE, forceOverwrite = TRUE,
+                   savePlots = FALSE, description = "Technical information about LR genes in the dataset", 
+                   maxNForCorr = 25, maxNForDisp = Inf, 
+                   calculateStatistics = TRUE, subsampleSize = 25,
+                   kfrac = 0.01, kmin = 5, 
+                   permutationPvalues = FALSE, nPermutations = NULL)
+}
+'

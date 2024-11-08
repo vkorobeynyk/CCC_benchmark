@@ -63,6 +63,24 @@ semi_simulate = function(counts , simulated_interactions_lst ,genemetadata,  met
               not_inflated_cells = not_inflated_cells))
 }
 
+# Filter LR database to contain only genes present in count matrix
+select_filter_LRdbgenes = function(counts) 
+{
+  LRdb = select_resource(c('OmniPath'))[[1]]
+  colnames(LRdb)[1:2] = c("ligand", "receptor")
+  
+  LRdb = LRdb[(LRdb$ligand %in% rownames(counts)),]
+  LRdb = LRdb[(LRdb$receptor %in% rownames(counts)),]
+  # filter LR because there are duplicated pairs (only 1)
+  LRdb$L_R = str_c(LRdb$ligand,"_",LRdb$receptor)
+  LRdb = LRdb[!duplicated(LRdb$L_R),]
+  return(LRdb)
+}
+
+
+# Generate 2 plots:
+# avelogcpm plot according to edgeR that shows how much signal we added to data
+# Effective percentage of cells expressing the genes we simulated. This plot is just a sanity check that we are setting correctly amount of cells expressing the genes
 compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, dataset, metadata , CT_toPlot)
 {
   plot_avelogcpm_fixed_PCE = list()
@@ -96,12 +114,10 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
       for(i in CT_toPlot) {genes_to_plot = append(genes_to_plot , master_lst[[x]][[i]])}
       genes_to_plot = genes_to_plot %>% unlist %>% unique
       
-      # filter the inflated counts based to contain cells belonging to the celltype indicated by CT_toPlot
-      tmp_counts = master_lst[[x]][["inflated_counts"]][,metadata$Celltype %in% CT_toPlot]
-      counts_aveLogCPM = aveLogCPM(tmp_counts)
+      counts_aveLogCPM = master_lst[[x]][["counts_aveLogCPM"]]
       
       current_FC = str_split( x,"_") %>% lapply(., "[[", 2) %>% unlist
-      df = data.frame(original_counts = filtered_original_counts_aveLogCPM , avelogcpm = counts_aveLogCPM, is_LR =  rownames(tmp_counts) %in% genes_to_plot)
+      df = data.frame(original_counts = filtered_original_counts_aveLogCPM , avelogcpm = counts_aveLogCPM, is_LR =  names(counts_aveLogCPM) %in% genes_to_plot)
       plot = ggplot(df,aes(x = original_counts , y = avelogcpm , color = is_LR)) + 
         geom_point(size = 0.5) + 
         ggtitle(paste0("PCE = " ,PCE , " dataset = ",dataset, " CT = ",paste(CT_toPlot, collapse = " "))) +
@@ -127,35 +143,6 @@ compute_diagnostic_plots = function(counts , master_lst, FC_param, PCE_param, da
   return(list = list(avelogcpm_fixedPCE = plot_avelogcpm_fixed_PCE , PCE_fixedPCE = plot_corr_fixed_PCE_cells_expressing))
 }
 
-# currently not used
-plot_variability = function(data, metric_plot, FC, color_range) {
-  data = filter(data,metric == metric_plot)
-  data$lower = data$value - data$value_sd
-  data$upper = data$value + data$value_sd
-  data$variability_range = data$upper-data$lower 
-  
-  # symmetric color range
-  if(FC)
-  {
-    p = ggplot(data) +
-      geom_point(aes(x=PCE,y=method, color=variability_range) , size = 3) +
-      # limits should be the same, using divergent palette for ease of seeing when 
-      # interval contains 0
-      scale_color_gradientn(colors=cetcolor::cet_pal(7, 'd1a'), limits=color_range) +
-      theme_bw() +
-      ggtitle(paste0("variability of ", metric_plot)) 
-  } else {
-    p = ggplot(data) +
-      geom_point(aes(x=FC,y=method, color=variability_range) , size = 3) +
-      # limits should be the same, using divergent palette for ease of seeing when 
-      # interval contains 0
-      scale_color_gradientn(colors=cetcolor::cet_pal(7, 'd1a'), limits=color_range) +
-      theme_bw() +
-      ggtitle(paste0("variability of ", metric_plot)) 
-  }
-  return(p)
-}
-
 # As theoretical FC that we apply in the semi-simulation actually doesnt represent the practical FC that the data will be transformed with generate a
 # plot with real FC after semi-simulation
 plot_FCafter_semisimulation = function(vec, theoreticalFC, PCE)
@@ -168,10 +155,10 @@ plot_FCafter_semisimulation = function(vec, theoreticalFC, PCE)
     geom_point() +
     geom_hline(yintercept=theoreticalFC, linetype="dashed", color = "red", linewidth = 1)  + 
     geom_hline(yintercept=median, linetype="dashed", color = "blue", linewidth = 1)  + 
-    ggtitle(paste0("PCE=",PCE , " | theoretical FC=",theoreticalFC , " | real FC median=",median)) +
+    ggtitle(paste0("PCE=",PCE , " | theoretical FC=",theoreticalFC , " | effective FC median=",median)) +
     xlab("LR index") +
-    ylab("FC after simulation (log10 scale)") +
-    scale_y_log10() +
+    ylab("FC after simulation")  +
+    coord_trans(y="log10") +
     theme(axis.text.x=element_blank(), #remove x axis labels
           plot.title = element_text(size=8)  , 
           axis.text.y = element_text(size = 8)

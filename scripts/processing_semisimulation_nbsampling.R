@@ -12,34 +12,27 @@ if (is.null(snakemake@input[["counts_processed"]]) | is.null(snakemake@input[["m
   stop("Argument_name needs to be specified, but is missing.n", call.=FALSE)
 }
 # OUTPUT FILES
-path_sc_inflated_counts <- snakemake@output[["sc_inflated_counts"]]
-path_sc_metadata <- snakemake@output[["sc_metadata"]]
-path_perc_cells_expressing_perGene <- snakemake@output[["perc_cells_expressing_perGene"]]
-path_simulated_interactions <- snakemake@output[["simulated_interactions"]]
-path_FC_after_simulation <- snakemake@output[["FC_after_simulation"]]
-path_target_ct_file <- snakemake@output[["target_ct_file"]] # this is needed to carry over the file for the methods -> some fail due to low amount of cells, so we have to filter based on CT we are simulating
+path_sc_inflated_counts = snakemake@output[["sc_inflated_counts"]]
+path_sc_metadata = snakemake@output[["sc_metadata"]]
+path_perc_cells_expressing_perGene = snakemake@output[["perc_cells_expressing_perGene"]]
+path_simulated_interactions = snakemake@output[["simulated_interactions"]]
+path_FC_after_simulation = snakemake@output[["FC_after_simulation"]]
+path_target_ct_file_out = snakemake@output[["target_ct_file"]] # this is needed to carry over the file for the methods -> some fail due to low amount of cells, so we have to filter based on CT we are simulating
 
 
 # INPUT FILES
-counts_processed_path <- snakemake@input[["counts_processed"]]
-metadata_processed_path <- snakemake@input[["metadata_processed"]]
-genemetadata_path <- snakemake@input[["genemetadata"]]
-target_ct_file_path <- snakemake@input[["target_ct_file"]]
+counts_processed_path = snakemake@input[["counts_processed"]]
+metadata_processed_path = snakemake@input[["metadata_processed"]]
+genemetadata_path = snakemake@input[["genemetadata"]]
+path_target_ct_file = snakemake@input[["target_ct_file"]]
 
 ##################
 # Set parameters #
 ##################
 
-nLR_per_CTCTcomb <- snakemake@params[["nLR_per_CTCTcomb"]]
-FC <- as.double(snakemake@wildcards[["FC"]])
-perc_cells_expressing <- as.integer(snakemake@wildcards[["perc_cells_expressing"]])
-
-
-# output files
-sc_inflated_counts_path <- snakemake@output[["sc_inflated_counts"]]
-simulated_interactions_path <- snakemake@output[["simulated_interactions"]]
-sc_metadata_path <- snakemake@output[["sc_metadata"]]
-cells_sampled_perCTCT_path <- snakemake@output[["cells_sampled_perCTCT"]]
+nLR_per_CTCTcomb = snakemake@params[["nLR_per_CTCTcomb"]]
+FC = as.double(snakemake@wildcards[["FC"]])
+perc_cells_expressing = as.integer(snakemake@wildcards[["perc_cells_expressing"]])
 
 #############
 # read data #
@@ -49,14 +42,14 @@ counts = read.table(counts_processed_path)
 metadata = read.table(metadata_processed_path)
 genemetadata = readRDS(genemetadata_path)
 means_perCT = genemetadata$mean
-target_ct = read.table(target_ct_file_path) %>% unlist %>% as.character
+target_ct = read.table(path_target_ct_file) %>% unlist %>% as.character
 
 '
-counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/counts_VASAseq_processed.tsv")
-metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/metadata_VASAseq_processed.tsv")
-genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/genemetadata.RDS")
+counts = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/counts_10x_processed.tsv")
+metadata = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/metadata_10x_processed.tsv")
+genemetadata = readRDS("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/genemetadata.RDS")
 means_perCT = genemetadata$mean
-target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/VASAseq/target_ct_file.tsv") %>% unlist %>% as.character
+target_ct = read.table("/home/vkorob/Documents/git/CCC_benchmark/data/processed/10x/target_ct_file.tsv") %>% unlist %>% as.character
 '
 
 # check if cell names of counts and metadata correspond and are in the same order
@@ -72,23 +65,6 @@ message(paste("Target celltypes:" , str_flatten(target_ct, " ")))
 message(paste("Shape of count dataframe:" , str_flatten(dim(counts) , " ")))
 
 ########################################################
-#                      NOT USED                        #
-# remove genes with mean < Q1 in celltypes to simulate #
-########################################################
-
-x1 = summary( means_perCT[,target_ct[1]]) %>% as.list
-x2 = summary( means_perCT[,target_ct[2]]) %>% as.list
-
-bx1 = between(means_perCT[,target_ct[1]] , x1$`1st Qu.` , x1$`3rd Qu.`)
-bx2 = between(means_perCT[,target_ct[2]] , x2$`1st Qu.` , x2$`3rd Qu.`)
-
-
-gene_index = which(bx1 | bx2)
-#if(length(gene_index) > 0) {
-#  means_perCT = means_perCT[gene_index,]
-#}
-
-########################################################
 # remove genes with mean == 0 in celltypes to simulate #
 ########################################################
 
@@ -102,14 +78,8 @@ if(length(gene_index) > 0) {
 #############
 
 # Load OmniPath database
-LRdb = select_resource(c('OmniPath'))[[1]]
-colnames(LRdb)[1:2] = c("ligand", "receptor")
-
-LRdb = LRdb[(LRdb$ligand %in% rownames(counts)),]
-LRdb = LRdb[(LRdb$receptor %in% rownames(counts)),]
-# filter LR because there are duplicated pairs (only 1)
+LRdb = select_filter_LRdbgenes(counts)
 LRdb$L_R = str_c(LRdb$ligand,"_",LRdb$receptor)
-LRdb = LRdb[!duplicated(LRdb$L_R),]
 
 # filter LRdb to only contain L/R that have mean != 0
 LRdb %<>% filter(ligand %in% means_perCT$gene_names)
@@ -163,6 +133,9 @@ for(comb_CT in combination_CT)
     subunits = c(tmp_df$source_genesymbol %>% str_split("_") %>% lapply("[",1) , tmp_df$source_genesymbol %>% str_split("_") %>% lapply("[",2)) %>% unlist %>% unique()
     subunits = subunits[!grepl(gene, subunits)] # remove original gene
     
+    # dont select subunits that are not in means_perCT (probably were filtered because estimated mean = 0 or the gene doesnt exist in the data)
+    subunits %<>% .[subunits %in% means_perCT$gene_names]
+    
     simulated_interactions_lst[[comb_CT]]  %<>% append(. , subunits[which(subunits %in% rownames(counts))] %>% str_c(., "_subunit")) # remove empty strings and add subunit . Also here we filter subunits that are not present in count data
   }
   
@@ -176,6 +149,10 @@ for(comb_CT in combination_CT)
     
     subunits = c(tmp_df$target_genesymbol %>% str_split("_") %>% lapply("[",1) , tmp_df$target_genesymbol %>% str_split("_") %>% lapply("[",2)) %>% unlist %>% unique()
     subunits = subunits[!grepl(gene, subunits)] # remove original gene
+    
+    # dont select subunits that are not in means_perCT (probably were filtered because estimated mean = 0 or the gene doesnt exist in the data)
+    subunits %<>% .[subunits %in% means_perCT$gene_names]
+    
     simulated_interactions_lst[[comb_CT]]  %<>% append(. , subunits[which(subunits %in% rownames(counts))] %>% str_c("subunit_" , .)) # remove empty strings and add subunit . Also here we filter subunits that are not present in count data
   }
   
@@ -219,13 +196,12 @@ for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
   mm= model.matrix(as.formula("~0 + Celltype") , metadata2)
   
   # Estimate disp
-  tmp_dge <- estimateDisp(tmp_dge , design = mm)
-  tmp_dge <- edgeR::calcNormFactors(tmp_dge)
+  tmp_dge = estimateDisp(tmp_dge , design = mm)
+  tmp_dge = edgeR::calcNormFactors(tmp_dge)
   
   # estimating mu
-  centered.off <- edgeR::getOffset(tmp_dge)  
-  centered.off <- centered.off - mean(centered.off) 
-  logmeans <- edgeR::mglmOneWay(tmp_dge$counts, offset = 0, design = mm,
+  centered.off = edgeR::getOffset(tmp_dge)  
+  logmeans = edgeR::mglmOneWay(tmp_dge$counts, offset = 0, design = mm,
                                 dispersion = tmp_dge$tagwise.dispersion) 
   
   means_perCT_semisimulation = exp(logmeans$coefficients) %>% as.data.frame
@@ -242,10 +218,9 @@ for(CT in names(semi_simulation_out$not_inflated_cells[[1]]))
 # save results #
 ################
 
-write.table(semi_simulation_out$counts_inflated, sc_inflated_counts_path , sep = "\t")
-write.table(metadata,sc_metadata_path, sep = "\t")
+write.table(semi_simulation_out$counts_inflated, path_sc_inflated_counts , sep = "\t")
+write.table(metadata,path_sc_metadata, sep = "\t")
 saveRDS(simulated_interactions_lst,path_simulated_interactions)
 saveRDS(semi_simulation_out$perc_cells_expressing_lst,path_perc_cells_expressing_perGene)
 saveRDS(FC_after_semisimulation,path_FC_after_simulation)
-write.table(target_ct, path_target_ct_file , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells
-sessionInfo()
+write.table(target_ct, path_target_ct_file_out , sep = "\t", row.names = F, col.names = F) # sample 2 celtypes with highest amount of cells

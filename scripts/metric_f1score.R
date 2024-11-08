@@ -58,9 +58,9 @@ for(comb_CTs in combinations_CTs)
         if(TP == 0) {precision = 0 ; recall = 0} else {precision = TP / (TP + FP) ; recall = TP / (TP + FN)}
         
         
-        lst_score_perCTCT[[comb_CTs]][["precision"]] = precision %>% round(2)
-        lst_score_perCTCT[[comb_CTs]][["recall"]] = recall %>% round(2)
-        lst_score_perCTCT[[comb_CTs]][["f1score"]] = 2 * precision * recall / (precision + recall) %>% round(2)
+        lst_score_perCTCT[[comb_CTs]][["precision"]] = precision
+        lst_score_perCTCT[[comb_CTs]][["recall"]] = recall 
+        lst_score_perCTCT[[comb_CTs]][["f1score"]] = 2 * precision * recall / (precision + recall)
     } else {
         lst_score_perCTCT[[comb_CTs]][["precision"]] = NA
         lst_score_perCTCT[[comb_CTs]][["recall"]] = NA
@@ -75,12 +75,12 @@ for(comb_CTs in combinations_CTs)
 # statistics #
 ##############
 
-precision = lst_score_perCTCT[[1]]$precision%>% round(2)
-recall =  lst_score_perCTCT[[1]]$recall %>% round(2)
-f1score =  lst_score_perCTCT[[1]]$f1score %>% round(2)
+precision = lst_score_perCTCT[[1]]$precision
+recall =  lst_score_perCTCT[[1]]$recall 
+f1score =  lst_score_perCTCT[[1]]$f1score
 
 # print all scores
-print(paste("precision:", precision %>% round(4), "recall:" ,recall %>% round(4) , "f1score:", f1score %>% round(4)))
+print(paste("precision:", precision %>% round(3), "recall:" ,recall %>% round(3) , "f1score:", f1score %>% round(3)))
 
 # Create df to store average results
 df_statistics = data.frame(precision = precision, recall = recall, f1score = f1score)

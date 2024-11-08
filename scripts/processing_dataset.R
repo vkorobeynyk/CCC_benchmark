@@ -63,12 +63,12 @@ dge = DGEList(counts = counts, samples = metadata)
 mm= model.matrix(as.formula("~0 + Celltype") , metadata)
 
 # Estimate disp
-dge <- estimateDisp(dge , design = mm)
-dge <- edgeR::calcNormFactors(dge)
+dge = estimateDisp(dge , design = mm)
+dge = edgeR::calcNormFactors(dge)
 
 # estimating mu
-centered.off <- edgeR::getOffset(dge)  
-logmeans <- edgeR::mglmOneWay(dge$counts, offset = mean(centered.off) , design = mm,
+centered.off = edgeR::getOffset(dge)  
+logmeans = edgeR::mglmOneWay(dge$counts, offset = 0, design = mm,
                                 dispersion = dge$tagwise.dispersion) 
 
 means_perCT = exp(logmeans$coefficients)
