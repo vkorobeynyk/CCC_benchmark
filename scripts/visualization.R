@@ -233,7 +233,7 @@ for(dataset in datasets)
   #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
   #                                                           FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
   diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-                                                               FC_param = FC[c(min(FC),median(FC),max(FC))], PCE_param = PCE[c(min(PCE),median(PCE),max(PCE))], dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
+                                                               FC_param = c(min(FC),median(FC),max(FC)), PCE_param = c(min(PCE),median(PCE),max(PCE)), dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
 }
 
 ######################
@@ -380,7 +380,7 @@ for(dataset in datasets)
     geom_point() +
     geom_line() +
     facet_grid(~PCE) +
-    ggtitle("Faceted by PCE . Ratio - n_simulated_LR in top25%_significant_LR")
+    ggtitle("Faceted by PCE . Ratio - n_simulated_LR in top50_significant_LR")
   
   ##### Save plots
   pdf(file.path(path_results_dir ,paste0(dataset, "_recall_precision_plots.pdf")), width = 12, height = 7)
