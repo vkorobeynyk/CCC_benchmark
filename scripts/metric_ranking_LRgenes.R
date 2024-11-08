@@ -46,8 +46,8 @@ for(comb_CTs in combinations_CTs)
   {
     # some method may have no significant interaction at lower parameter values -> skip those
     if(dim(significant_interactions[[comb_CTs]])[1] == 0) {
-      df_statistics = data.frame(amount_simulatedLR_intop25perc = 0,
-                                 amount_significantLR_intop25perc = 0,
+      df_statistics = data.frame(amount_simulatedLR_intop50 = 0,
+                                 amount_significantLR_intop50 = 0,
                                  ratio = 0)
       next
     }
@@ -65,53 +65,53 @@ for(comb_CTs in combinations_CTs)
         arrange(.,desc(LR_logFC)) 
       
       # select 25% genes with highest logFC for ranking
-      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(nrow(significant_interactions_CTCT) * 0.25)
+      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(50)
     } else if(significant_interactions[[comb_CTs]]$method[1] == "cellchat")
     {
       significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor)) %>% 
         arrange(.,desc(prob)) 
       
-      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(nrow(significant_interactions_CTCT) * 0.25)
+      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(50)
     } else if(significant_interactions[[comb_CTs]]$method[1] == "connectome")
     {
-      significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor)) %>% 
-        arrange(.,desc(weight_sc)) # we are adding expression so we should see increase in specificity == increase in weight_sc
+      significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor), weight_sc_abs = weight_sc %>% abs) %>% 
+        arrange(.,desc(weight_sc_abs)) # we are adding expression so we should see increase in specificity == increase in weight_sc
       
-      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(nrow(significant_interactions_CTCT) * 0.25)
+      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(50)
     } else if(significant_interactions[[comb_CTs]]$method[1] == "cytotalk")
     {
       significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor)) %>% 
         arrange(.,desc(crosstalk_score)) 
       
-      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(nrow(significant_interactions_CTCT) * 0.25)
+      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(50)
     } else if(significant_interactions[[comb_CTs]]$method[1] == "singlecellsignalR")
     {
       significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor)) %>% 
         arrange(.,desc(LRscore)) 
       
       # select 25% genes with highest logFC for ranking
-      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(nrow(significant_interactions_CTCT) * 0.25)
+      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(50)
     } else if(significant_interactions[[comb_CTs]]$method[1] == "natmi_specificity")
     {
       significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor)) %>% 
         arrange(.,desc(edge_specificity)) 
       
       # select 25% genes with highest logFC for ranking
-      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(nrow(significant_interactions_CTCT) * 0.25)
+      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(50)
     } else if(significant_interactions[[comb_CTs]]$method[1] == "natmi_4th_quantile")
     {
       significant_interactions_CTCT = significant_interactions[[comb_CTs]] %>% mutate(LR = str_c(ligand, "_", receptor)) %>% 
         arrange(.,desc(sum_LR_specificity)) 
       
       # select 25% genes with highest logFC for ranking
-      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(nrow(significant_interactions_CTCT) * 0.25)
+      significant_interactions_CTCT = significant_interactions_CTCT %>% top_n(50)
     } else{message(paste("the method",significant_interactions[[comb_CTs]]$method[1], "was not accounted for in ranking_LRgenes script" ))}
     
     
     
     # how many simulated gene pairs are in the methods output
-    df_statistics = data.frame(amount_simulatedLR_intop25perc = intersect(simulated_interactions_CTCT, significant_interactions_CTCT$LR) %>% length,
-                    amount_significantLR_intop25perc = nrow(significant_interactions_CTCT)) %>% mutate(ratio = amount_simulatedLR_intop25perc / amount_significantLR_intop25perc)
+    df_statistics = data.frame(amount_simulatedLR_intop50 = intersect(simulated_interactions_CTCT, significant_interactions_CTCT$LR) %>% length,
+                    amount_significantLR_intop50 = nrow(significant_interactions_CTCT)) %>% mutate(ratio = amount_simulatedLR_intop50 / amount_significantLR_intop50)
   } 
 }
 
