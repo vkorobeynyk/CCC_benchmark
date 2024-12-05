@@ -36,7 +36,6 @@ path_config.yaml = opt$config.yaml
 path_output_dir = opt$path_output_dir
 path_results_dir = opt$path_results_dir
 dir.create(path_results_dir)
-dir.create(file.path(path_output_dir,"countsimQC"))
 
 ########################################
 ##### Loading and processing files #####
@@ -60,7 +59,6 @@ diagnostic_plots_MeanVar = list()
 diagnostic_plots_realFC = list()
 diagnostic_df_realFC = list()
 diagnostic_gene_densityPlots = list()
-countsimQC_report_lst = list()
 for(dataset in datasets)
 {
   # load files
@@ -69,9 +67,6 @@ for(dataset in datasets)
   original_counts = read.table(file.path("data/",dataset, "raw_counts.tsv"))  # load original counts
   rownames(original_counts) = rownames(original_counts) %>% toupper()
   colnames(original_counts) = gsub("[.-]","_" , colnames(original_counts))
-  
-  # LOad OMnipath LRdb -> used for countsimQC filtering
-  LRdb = select_filter_LRdbgenes(original_counts)
   
   PCE_files = file_path %>% list.files(., pattern = "perc_cells_expressing_perGene")
   simulated_interactions_files = file_path %>% list.files(., pattern = "simulated_interactions")
@@ -130,15 +125,6 @@ for(dataset in datasets)
       master_lst_diagnosticPlots[[naming]][[CT]] = list(L = L_genes_inflated_per_CT_to_keep %>% unique , R = R_genes_inflated_per_CT_to_keep %>% unique)
     }
     
-    ########################################
-    ##### For countsimQC report #####
-    total_nLRgenes = unique(LRdb$ligand,LRdb$receptor)
-    
-    if((i %% 2) == 0) # 1  is for 1 %% 11 
-    {
-      countsimQC_report_lst[[dataset]][[naming]] = inflated_counts %>%  filter(rownames(.) %in% total_nLRgenes) %>% select(., which(metadata$Celltype %in% CT_present))
-    }
-    
     ####################################################################
     ##### Generate density plots of simulated genes b/a simulation #####
     
@@ -194,14 +180,6 @@ for(dataset in datasets)
     master_lst_diagnosticPlots[[naming]][["counts_aveLogCPM"]] = inflated_counts[,metadata$Celltype %in% CT_present[1]] %>% aveLogCPM
     names(master_lst_diagnosticPlots[[naming]][["counts_aveLogCPM"]]) = rownames(inflated_counts)
   }
-  
-  # save original counts for the countsimQC report
-  # We are taking all LR existent in the inflated counts because thats a filtered dataset
-  # Original counts has many genes that get filtered upon initial preprocessing
-  countsimQC_report_lst[[dataset]][["original_counts"]] = original_counts %>% 
-    filter(rownames(.) %in% rownames(inflated_counts)) %>%  
-    filter(rownames(.) %in% total_nLRgenes) %>% 
-    select(., which(metadata$Celltype %in% CT_present))
     
   ##################################
   ##### Mean var plot of genes #####
@@ -251,12 +229,12 @@ for(dataset in datasets)
   diagnostic_plots_MeanVar[[dataset]] %>% print
   
   
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.001_PCE_10[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.001_PCE_50[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.1_PCE_10[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.1_PCE_50[[1]], common.legend = TRUE)) %>% print
   do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_10[[1]], common.legend = TRUE)) %>% print
   do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_50[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_10_PCE_10[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_10_PCE_50[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_10[[1]], common.legend = TRUE)) %>% print
+  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_50[[1]], common.legend = TRUE)) %>% print
   
   #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_5[[1]], common.legend = TRUE)) %>% print
   #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_10_PCE_10[[1]], common.legend = TRUE)) %>% print
@@ -285,8 +263,8 @@ for(dataset in datasets)
       master_lst_precision_recall[[file]] = read.csv((file.path(path_output_dir,dataset,"metrics/",method,file))) %>% unlist
     }
     
-    ###############################################################################
-    ##### Ranking of LR genes across top 25% of significant hits from methods #####
+    #############################################################################
+    ##### Ranking of LR genes across top n of significant hits from methods #####
     
     tmp_ranking_LRgenes_lst = list()
     ranking_LRgenes_files = file.path(path_output_dir,dataset,"metrics/",method) %>% list.files(., pattern = "ranking_LRgenes")
@@ -328,7 +306,23 @@ for(dataset in datasets)
   ranking_LRgenes_lst_plot[[dataset]] = ranking_LRgenes_lst_plot[[dataset]] %>% do.call(rbind,.) %>%
     mutate(PCE = statistics_results_lst_recallprecision_plot[[dataset]]$PCE ,
            FC = statistics_results_lst_recallprecision_plot[[dataset]]$FC)
-
+  #######################################
+  ##### Generate heatmap of f1score #####
+  tmp_df = statistics_results_lst_recallprecision_plot[[dataset]]
+  tmp_df$Parameters = paste0("FC_",tmp_df$FC,"_PCE_",tmp_df$PCE) # create additional column with parameter combination
+  heatmap1 = ggplot(tmp_df, aes(method, Parameters, fill= f1score)) +
+    geom_tile(color = "black") +
+    scale_fill_gradient(low = "white", high = "red") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+  
+  tmp_df$Parameters = paste0("PCE_",tmp_df$PCE,"_FC_",tmp_df$FC) # create additional column with parameter combination
+  heatmap2 = ggplot(tmp_df, aes(method, Parameters, fill= f1score)) +
+    geom_tile(color = "black") +
+    scale_fill_gradient(low = "white", high = "red") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+  
+  
+  rm(tmp_df)
   ##########################################
   ##### Generate Precision recall plot #####
   
@@ -388,24 +382,18 @@ for(dataset in datasets)
   p1 %>% print
   p2 %>% print
   p3 %>% print
+  heatmap1 %>% print
+  heatmap2 %>% print
   dev.off()
 }
 
-
-################################################################
-##### Generate QC plots of original datasets and simulated #####
-################################################################
-
-'
+#################################################################################
+##### Generate UpSet plot comparing significant interactions across methods #####
+#################################################################################
 for(dataset in datasets)
 {
-  countsimQCReport(ddsList = countsimQC_report_lst[[dataset]], outputFile = paste0(dataset, "_technicalInformation_onlyLRgenes_countsimQC.html"),
-                   outputDir = file.path(path_output_dir,"countsimQC/"), outputFormat = "html_document", 
-                   showCode = FALSE, forceOverwrite = TRUE,
-                   savePlots = FALSE, description = "Technical information about LR genes in the dataset", 
-                   maxNForCorr = 25, maxNForDisp = Inf, 
-                   calculateStatistics = TRUE, subsampleSize = 25,
-                   kfrac = 0.01, kmin = 5, 
-                   permutationPvalues = FALSE, nPermutations = NULL)
+  for(method in methods)
+  {
+    
+  }
 }
-'
