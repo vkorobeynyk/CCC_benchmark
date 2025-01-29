@@ -11,8 +11,27 @@ library(reshape2)
 library(purrr) 
 library(magrittr)
 library(plyr)
+library(tidyr)
 library(liana)
+library(ComplexUpset)
+library(ComplexHeatmap)
+library(UpSetR)
 source("scripts/helper_functions.R")
+
+# This function was entirely taken from package UpSetR
+fromList = function (input) 
+{
+  elements <- unique(unlist(input))
+  data <- unlist(lapply(input, function(x) {
+    x <- as.vector(match(elements, x))
+  }))
+  data[is.na(data)] <- as.integer(0)
+  data[data != 0] <- as.integer(1)
+  data <- data.frame(matrix(data, ncol = length(input), byrow = F))
+  data <- data[which(rowSums(data) != 0), ]
+  names(data) <- names(input)
+  return(data)
+}
 
 # Get list with command line arguments by name
 option_list = list(
@@ -59,6 +78,7 @@ diagnostic_plots_MeanVar = list()
 diagnostic_plots_realFC = list()
 diagnostic_df_realFC = list()
 diagnostic_gene_densityPlots = list()
+UpSet_plot_lst = list()
 for(dataset in datasets)
 {
   # load files
@@ -93,33 +113,64 @@ for(dataset in datasets)
     naming = paste0("FC_",x["FC"],"_PCE_",x["PCE"])
     
     # load correct count file depending on the params_grid
-    inflated_counts_file = inflated_counts_files %>% extract(grepl(paste0("_" , x["FC"] , "_", ".*",x["PCE"] , ".tsv$"), inflated_counts_files))
+    inflated_counts_file = inflated_counts_files %>% magrittr::extract(grepl(paste0("_" , x["FC"] , "_", ".*",x["PCE"] , ".tsv$"), inflated_counts_files))
     inflated_counts = read.table(file.path(file_path,inflated_counts_file))
     
     # load correct simulated interactions file depending on the params_grid
-    simulated_interactions_file = simulated_interactions_files %>% extract(grepl(paste0("_" , x["FC"] , "_",".*",x["PCE"] , ".RDS$"), simulated_interactions_files))
-    master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] = readRDS(file.path(file_path,simulated_interactions_file))
+    simulated_interactions_file = simulated_interactions_files %>% magrittr::extract(grepl(paste0("_" , x["FC"] , "_",".*",x["PCE"] , ".RDS$"), simulated_interactions_files))
+    tmp_vec = readRDS(file.path(file_path,simulated_interactions_file))[[1]] %>% magrittr::extract(!str_detect(. , "subunit")) # remove the subunit genes that we inflated -> if we dont remove them, we will have much more FN
+    master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] = tmp_vec 
+    rm(tmp_vec)
     
     # load correct PCE file depending on the params_grid
     PCE_file = PCE_files[grepl(paste0("_" , x["FC"] , "_", ".*", x["PCE"] , ".RDS$"), PCE_files)]
     master_lst_diagnosticPlots[[naming]][["PCE"]] = readRDS(file.path(file_path,PCE_file)) %>% unlist * 100 # transform to percentage
     
+    #################################################################################
+    ##### Generate UpSet plot comparing significant interactions across methods #####
+    # Here we are iterating per dataset
+    # We are also iterating across FC/PCE parameter grid
+    
+    # Iterate over methods to get the all the True Positives that methods picked up
+    for(method in methods)
+    {
+      significant_interactions_files = file.path(path_output_dir,dataset,method) %>%
+        list.files(., pattern = "significant_interactions")
+      significant_interactions_file = significant_interactions_files %>% magrittr::extract(grepl(paste0("_" , x["FC"] , "_",".*",x["PCE"] , ".RDS$"), significant_interactions_files))
+      
+      tmp_vec = readRDS(file.path(path_output_dir,dataset,method,significant_interactions_file))$CT1_CT2 %>% 
+        mutate(ligand_receptor = str_c(.$ligand ,"_", .$receptor)) %>%
+        select(ligand_receptor) %>%
+        unlist %>%
+        unname 
+      
+      tmp_vec2 = intersect(tmp_vec, master_lst_diagnosticPlots[[naming]][["simulated_interactions"]])
+      tmp_vec3 = setdiff(tmp_vec, master_lst_diagnosticPlots[[naming]][["simulated_interactions"]])
+      
+      master_lst_diagnosticPlots[[naming]][["TP_byMethod"]][[method]] = tmp_vec2
+      master_lst_diagnosticPlots[[naming]][["FP_byMethod"]][[method]] = tmp_vec3
+    }
+    
+    # generate upset plot 
+    UpSet_plot_lst[[dataset]][[naming]][["UpSet_plot_TP_byMethod"]] = ComplexUpset::upset(fromList(master_lst_diagnosticPlots[[naming]][["TP_byMethod"]]), intersect = methods) + ggtitle(paste("Intersection of TP -",naming))
+    UpSet_plot_lst[[dataset]][[naming]][["UpSet_plot_FP_byMethod"]] = ComplexUpset::upset(fromList(master_lst_diagnosticPlots[[naming]][["FP_byMethod"]]), intersect = methods) + ggtitle(paste("Intersection of FP -",naming))
+    rm(tmp_vec, tmp_vec2, tmp_vec3)
     ########################################
     ##### Generate L/R inflated per CT #####
+    # Here we are iterating per dataset
+    # We are also iterating across FC/PCE parameter grid
     
     # It is written in this more "messy" way for cases when we are testing for multiple sender-receiver cells
-    CT_present = names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_")  %>% unlist %>% unique
+    CT_present = c("CT1","CT2")
     for(CT in CT_present)
     {
       # Find Ligand genes which were inflated in specified celltype 
-      n = which(names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_") %>% lapply(.,"[[",1) %>% unlist %in% CT)
-      L_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% 
-        lapply("[[", 1) %>% unlist %>% setdiff(., "subunit") # remove subunit string
+      L_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] %>% str_split(.,"_") %>% 
+        lapply("[[", 1) %>% unlist
       
       # Find Receptor genes which were inflated in specified celltype inflated 
-      n = which(names(master_lst_diagnosticPlots[[naming]][["simulated_interactions"]]) %>% str_split(.,"_") %>% lapply(.,"[[",2) %>% unlist %in% CT)
-      R_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]][n] %>% unlist %>% str_split(.,"_") %>% 
-        lapply("[[", 2) %>% unlist%>% setdiff(., "subunit") # remove subunit string
+      R_genes_inflated_per_CT_to_keep = master_lst_diagnosticPlots[[naming]][["simulated_interactions"]] %>% str_split(.,"_") %>% 
+        lapply("[[", 2) %>% unlist
       
       # Save inflated genes per CT
       master_lst_diagnosticPlots[[naming]][[CT]] = list(L = L_genes_inflated_per_CT_to_keep %>% unique , R = R_genes_inflated_per_CT_to_keep %>% unique)
@@ -127,6 +178,8 @@ for(dataset in datasets)
     
     ####################################################################
     ##### Generate density plots of simulated genes b/a simulation #####
+    # Here we are iterating per dataset
+    # We are also iterating across FC/PCE parameter grid
     
     for(CT in CT_present)
     {
@@ -162,8 +215,10 @@ for(dataset in datasets)
     
     ###########################################################
     ##### Generate Plots of real FC after semi-simulation #####
+    # Here we are iterating per dataset
+    # We are also iterating across FC/PCE parameter grid
     
-    realFC_aftersimulation_file = file_path %>% list.files(., pattern = "realFC_aftersimulation") %>% extract(grepl(paste0("_",x["FC"] , "_" ,".*",x["PCE"] , ".RDS$"), .))
+    realFC_aftersimulation_file = file_path %>% list.files(., pattern = "realFC_aftersimulation") %>% magrittr::extract(grepl(paste0("_",x["FC"] , "_" ,".*",x["PCE"] , ".RDS$"), .))
     
     tmp_lst = readRDS(file.path(file_path,realFC_aftersimulation_file)) %>% 
       unlist %>% subset(.,!is.infinite(.)) %>% 
@@ -183,8 +238,8 @@ for(dataset in datasets)
     
   ##################################
   ##### Mean var plot of genes #####
-
-    # LR sampled are the same regarding FC and PCE parameters. Meaning that we can use any master_lst_diagnosticPlots[[naming]][[CT]]
+  # LR sampled are the same regarding FC and PCE parameters. Meaning that we can use any master_lst_diagnosticPlots[[naming]][[CT]]
+  
   genemetadata = readRDS(file.path("data/processed/", dataset,"genemetadata.RDS"))
   tmp_df_L = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[1]]] %>% unlist %>% as.character))
   tmp_df_R = subset(genemetadata$mean, gene_names %in% (master_lst_diagnosticPlots[[naming]][[CT_present[2]]] %>% unlist %>% as.character))
@@ -204,12 +259,7 @@ for(dataset in datasets)
   # filter original avelogcpm counts to contain same genes as the inflated count matrices
   original_counts = original_counts %>% subset(rownames(original_counts) %in% rownames(inflated_counts))
   
-  #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                           FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
-  #diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                             FC_param = FC, PCE_param = PCE, dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
-  #diagnostic_plots_lst[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
-  #                                                           FC_param = FC[c(1,4,8)], PCE_param = PCE[c(1,3,7)], dataset = dataset, metadata = metadata, CT_toPlot = CT_present)
+  # generate diagnostic plots of avelogcpm and PCE 
   diagnostic_plots_perCT[[dataset]] = compute_diagnostic_plots(counts = original_counts, master_lst = master_lst_diagnosticPlots, 
                                                                FC_param = c(min(FC),median(FC),max(FC)), PCE_param = c(min(PCE),median(PCE),max(PCE)), dataset = dataset, metadata = metadata, CT_toPlot = CT_present[1])
 }
@@ -236,10 +286,6 @@ for(dataset in datasets)
   do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_10[[1]], common.legend = TRUE)) %>% print
   do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_50[[1]], common.legend = TRUE)) %>% print
   
-  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_5[[1]], common.legend = TRUE)) %>% print
-  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_10_PCE_10[[1]], common.legend = TRUE)) %>% print
-  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_20_PCE_30[[1]], common.legend = TRUE)) %>% print
-  #do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_40_PCE_50[[1]], common.legend = TRUE)) %>% print
   dev.off()
 }
 
@@ -292,7 +338,7 @@ for(dataset in datasets)
     for(i in 1:length(PCE))
     {
       FC_real = append(FC_real,filter(tmp_diagnostic_df_realFC, theoreticalFC == tmp_FC[i] & PCE_real == PCE[i]) %>% 
-                         select("FC_real_median") %>% as.numeric) %>% round
+                         select("FC_real_median") %>% unlist %>% round(1)) 
     }
     rm(tmp_diagnostic_df_realFC)
     
@@ -313,14 +359,42 @@ for(dataset in datasets)
   heatmap1 = ggplot(tmp_df, aes(method, Parameters, fill= f1score)) +
     geom_tile(color = "black") +
     scale_fill_gradient(low = "white", high = "red") +
-    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    ggtitle("heatmap of f1score sorted by increasing values of FC")
   
   tmp_df$Parameters = paste0("PCE_",tmp_df$PCE,"_FC_",tmp_df$FC) # create additional column with parameter combination
   heatmap2 = ggplot(tmp_df, aes(method, Parameters, fill= f1score)) +
     geom_tile(color = "black") +
     scale_fill_gradient(low = "white", high = "red") +
-    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    ggtitle("heatmap of f1score sorted by increasing values of PCE")
   
+  # create xtabs table
+  heatmap_mtx = xtabs(f1score ~ ., tmp_df %>% select(c(Parameters, f1score, method)))
+  x = rownames(heatmap_mtx) %>% str_split("_")
+  FC = x %>% lapply(.,"[[",2) %>% unlist %>% as.numeric
+  PCE = x %>% lapply(.,"[[",4) %>% unlist %>% as.numeric
+  
+  # generate annotations and heatmap itself
+  ha = rowAnnotation(PCE = PCE)
+  ha2 = rowAnnotation(FC = FC,
+                      col = setNames(RColorBrewer::brewer.pal(name = "Spectral", n = 9), FC) %>% as.list)
+  library(circlize)
+  col_fun = colorRamp2(c(min(heatmap_mtx), max(heatmap_mtx)), c("white", "coral"))
+  
+  Heatmap(heatmap_mtx, 
+          left_annotation = rowAnnotation(PCE = anno_block(gp = gpar(fill = 2:4),
+                                                           labels = paste0("PCE_",unique(PCE)) ,
+                                                           labels_gp = gpar(col = "white", fontsize = 10))), 
+          right_annotation = ha2,
+          split = PCE,
+          col = col_fun,
+          show_row_dend = F,
+          show_column_dend = F, 
+          show_row_names = F,
+          name = "f1score",
+          column_names_rot = 60,
+          column_title = "f1score of CCC methods extracting added signal")
   
   rm(tmp_df)
   ##########################################
@@ -377,23 +451,20 @@ for(dataset in datasets)
     ggtitle("Faceted by PCE . Ratio - n_simulated_LR in top50_significant_LR")
   
   ##### Save plots
-  pdf(file.path(path_results_dir ,paste0(dataset, "_recall_precision_plots.pdf")), width = 12, height = 7)
+  pdf(file.path(path_results_dir ,paste0(dataset, "_results_plots.pdf")), width = 12, height = 7)
   ggarrange(plotlist = lst_precision_recall_byPCE, common.legend = T) %>% print
   p1 %>% print
   p2 %>% print
   p3 %>% print
   heatmap1 %>% print
   heatmap2 %>% print
+  
+  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_0.1_PCE_10, nrow = 2)) %>% print
+  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_0.1_PCE_50, nrow = 2)) %>% print
+  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_1_PCE_10, nrow = 2)) %>% print
+  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_1_PCE_50, nrow = 2)) %>% print
+  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_3_PCE_10, nrow = 2)) %>% print
+  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_3_PCE_50, nrow = 2)) %>% print
+  
   dev.off()
-}
-
-#################################################################################
-##### Generate UpSet plot comparing significant interactions across methods #####
-#################################################################################
-for(dataset in datasets)
-{
-  for(method in methods)
-  {
-    
-  }
 }
