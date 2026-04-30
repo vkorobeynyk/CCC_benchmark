@@ -12,10 +12,8 @@ library(purrr)
 library(magrittr)
 library(plyr)
 library(tidyr)
-library(liana)
 library(ComplexUpset)
 library(ComplexHeatmap)
-library(UpSetR)
 source("scripts/helper_functions.R")
 
 # This function was entirely taken from package UpSetR
@@ -152,7 +150,11 @@ for(dataset in datasets)
     }
     
     # generate upset plot 
-    UpSet_plot_lst[[dataset]][[naming]][["UpSet_plot_TP_byMethod"]] = ComplexUpset::upset(fromList(master_lst_diagnosticPlots[[naming]][["TP_byMethod"]]), intersect = methods) + ggtitle(paste("Intersection of TP -",naming))
+    # check if there are not TP
+    if(!identical(tmp_vec2, character(0)))
+    {
+      UpSet_plot_lst[[dataset]][[naming]][["UpSet_plot_TP_byMethod"]] = ComplexUpset::upset(fromList(master_lst_diagnosticPlots[[naming]][["TP_byMethod"]]), intersect = methods) + ggtitle(paste("Intersection of TP -",naming))
+    } else {UpSet_plot_lst[[dataset]][[naming]][["UpSet_plot_TP_byMethod"]] = ggplot(data.frame()) + ggtitle("No TP for this method") + theme_bw()}
     UpSet_plot_lst[[dataset]][[naming]][["UpSet_plot_FP_byMethod"]] = ComplexUpset::upset(fromList(master_lst_diagnosticPlots[[naming]][["FP_byMethod"]]), intersect = methods) + ggtitle(paste("Intersection of FP -",naming))
     rm(tmp_vec, tmp_vec2, tmp_vec3)
     ########################################
@@ -181,36 +183,40 @@ for(dataset in datasets)
     # Here we are iterating per dataset
     # We are also iterating across FC/PCE parameter grid
     
-    for(CT in CT_present)
+    # check if cellnames are ordered
+    stopifnot(metadata$cell_ID == colnames(inflated_counts))
+    
+    set.seed(1)
+    gene_names = master_lst_diagnosticPlots[[naming]][[CT]] %>% unlist %>% sample(.,12) # sample only 12 genes as the report will contain only 12
+    
+    for(gene in gene_names)
     {
-      # check if cellnames are ordered
-      stopifnot(metadata$cell_ID == colnames(inflated_counts))
-      
-      set.seed(1)
-      gene_names = master_lst_diagnosticPlots[[naming]][[CT]] %>% unlist %>% sample(.,12) # sample only 9 genes as the report will contain only 9
-      
-      for(gene in gene_names)
+      # create df with counts of inflated and original count matrices
+      if(gene %in% master_lst_diagnosticPlots[[naming]][[CT]]$L) 
       {
-        # create df with counts of inflated and original count matrices
-        tmp_df = data.frame(inflated_counts = inflated_counts[gene,metadata$Celltype == CT] %>% as.numeric,
-                            original_counts = original_counts[gene,metadata$Celltype == CT] %>% as.numeric) %>% melt
-        
-        # calculate mean value for both counts
-        mu = ddply(tmp_df, "variable", summarise, grp.mean=mean(value))
-        
-        p = ggplot(tmp_df, aes(x=value, color=variable)) +
-          geom_density()+
-          geom_vline(data=mu, aes(xintercept=grp.mean, color=variable),
-                     linetype="dashed") +
-          ggtitle(paste0("density of counts | lines are the mean | FC:", x["FC"], " PCE:",x["PCE"], " gene:", gene)) +
-          theme(plot.title = element_text(size = 5, face = "bold"),
-                axis.title.x=element_blank(),
-                axis.title.y=element_blank(),
-                legend.title=element_blank(),
-                axis.text=element_text(size=6)) 
-        
-        diagnostic_gene_densityPlots[[dataset]][[naming]][[CT]][[gene]] = p
+        tmp_df = data.frame(inflated_counts = inflated_counts[gene,metadata$Celltype == "CT1"] %>% as.numeric,
+                            original_counts = original_counts[gene,metadata$Celltype == "CT1"] %>% as.numeric) %>% melt
+      } else {
+        tmp_df = data.frame(inflated_counts = inflated_counts[gene,metadata$Celltype == "CT2"] %>% as.numeric,
+                            original_counts = original_counts[gene,metadata$Celltype == "CT2"] %>% as.numeric) %>% melt
       }
+      
+      
+      # calculate mean value for both counts
+      mu = ddply(tmp_df, "variable", summarise, grp.mean=mean(value))
+      
+      p = ggplot(tmp_df, aes(x=value, color=variable)) +
+        geom_density()+
+        geom_vline(data=mu, aes(xintercept=grp.mean, color=variable),
+                   linetype="dashed") +
+        ggtitle(paste0("density of counts | lines - mean | FC:", x["FC"], " PCE:",x["PCE"], " gene:", gene)) +
+        theme(plot.title = element_text(size = 6, face = "bold"),
+              axis.title.x=element_blank(),
+              axis.title.y=element_blank(),
+              legend.title=element_blank(),
+              axis.text=element_text(size=6)) 
+      
+      diagnostic_gene_densityPlots[[dataset]][[naming]][[CT]][[gene]] = p
     }
     
     ###########################################################
@@ -271,20 +277,20 @@ for(dataset in datasets)
   pdf(file.path(path_results_dir ,paste0(dataset, "_diagnostic_plots.pdf")), width = 12, height = 7)
   #do.call(ggarrange,c(diagnostic_plots_lst[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE)) %>% print
   #do.call(ggarrange,diagnostic_plots_lst[[dataset]]$PCE_fixedPCE) %>% print
-  do.call(ggarrange,c(diagnostic_plots_perCT[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE)) %>% print
-  do.call(ggarrange,diagnostic_plots_perCT[[dataset]]$PCE_fixedPCE) %>% print
+  ggarrange(plotlist = diagnostic_plots_perCT[[dataset]]$avelogcpm_fixedPCE, common.legend = TRUE) %>% print
+  ggarrange(plotlist = diagnostic_plots_perCT[[dataset]]$PCE_fixedPCE) %>% print
   
   x = 1:length(diagnostic_plots_realFC[[dataset]])
-  sapply(x, function(x) {do.call(ggarrange,diagnostic_plots_realFC[[dataset]][[x]]) %>% print}) %>% print
+  sapply(x, function(x) {ggarrange(plotlist = diagnostic_plots_realFC[[dataset]][[x]]) %>% print}) %>% print
   diagnostic_plots_MeanVar[[dataset]] %>% print
   
   
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.1_PCE_10[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_0.1_PCE_50[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_10[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_50[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_10[[1]], common.legend = TRUE)) %>% print
-  do.call(ggarrange,c(diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_50[[1]], common.legend = TRUE)) %>% print
+  ggarrange(plotlist = diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_10[[1]], common.legend = T) %>% print
+  ggarrange(plotlist = diagnostic_gene_densityPlots[[dataset]]$FC_1_PCE_50[[1]], common.legend = T) %>% print
+  ggarrange(plotlist = diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_10[[1]], common.legend = T) %>% print
+  ggarrange(plotlist = diagnostic_gene_densityPlots[[dataset]]$FC_3_PCE_50[[1]], common.legend = T) %>% print
+  ggarrange(plotlist = diagnostic_gene_densityPlots[[dataset]]$FC_5_PCE_10[[1]], common.legend = T) %>% print
+  ggarrange(plotlist = diagnostic_gene_densityPlots[[dataset]]$FC_5_PCE_50[[1]], common.legend = T) %>% print
   
   dev.off()
 }
@@ -459,12 +465,12 @@ for(dataset in datasets)
   heatmap1 %>% print
   heatmap2 %>% print
   
-  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_0.1_PCE_10, nrow = 2)) %>% print
-  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_0.1_PCE_50, nrow = 2)) %>% print
-  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_1_PCE_10, nrow = 2)) %>% print
-  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_1_PCE_50, nrow = 2)) %>% print
-  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_3_PCE_10, nrow = 2)) %>% print
-  do.call(ggarrange,c(UpSet_plot_lst[[dataset]]$FC_3_PCE_50, nrow = 2)) %>% print
+  ggarrange(plotlist = UpSet_plot_lst$VASAseq$FC_1_PCE_10,nrow = 2) %>% print
+  ggarrange(plotlist = UpSet_plot_lst$VASAseq$FC_1_PCE_50,nrow = 2) %>% print
+  ggarrange(plotlist = UpSet_plot_lst$VASAseq$FC_3_PCE_10,nrow = 2) %>% print
+  ggarrange(plotlist = UpSet_plot_lst$VASAseq$FC_3_PCE_50,nrow = 2) %>% print
+  ggarrange(plotlist = UpSet_plot_lst$VASAseq$FC_5_PCE_10,nrow = 2) %>% print
+  ggarrange(plotlist = UpSet_plot_lst$VASAseq$FC_5_PCE_50,nrow = 2) %>% print
   
   dev.off()
 }

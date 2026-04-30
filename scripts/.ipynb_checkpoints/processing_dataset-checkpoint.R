@@ -50,8 +50,6 @@ counts = counts[rowSums(counts != 0) > 10,]
 # Filter genes based on minimal amount of counts it should express
 counts = counts[rowSums(counts) > 200,]
 
-rownames(counts) = rownames(counts) %>% toupper()
-colnames(counts) = gsub("[.-]","_" , colnames(counts))
 
 message(paste("Filtering - gene has to be expressed in at least 10 cells and have 200 counts"))
 
@@ -85,8 +83,7 @@ df = data.frame(means = meanvar_relationship$bin.means %>% unlist %>% log10, var
                 gene_names = meanvar_relationship$bin.vars %>% unlist %>% names)
 
 
-# select 10 genes from each bin
-# this is for visualizing randomly sampled genes compared to LR sampled
+# select 10 genes from each bin to be add signal to
 set.seed(3)
 vec_genes_toAdd_signal = vector()
 for(bin in 1:length(meanvar_relationship$bin.means))
@@ -104,7 +101,7 @@ genemetadata = list( disp = data.frame(gene = rownames(dge) , edgeR_dispersion =
                       mean = means_perCT %>% as.data.frame )
 genemetadata$mean$gene_names = genemetadata$mean %>% rownames()
 genemetadata$mean = merge(genemetadata$mean, df, by = "gene_names") # add mean and variance info
-genemetadata$mean %<>% mutate(.,randomly_sampled = genemetadata$mean$gene_names %in% vec_genes_toAdd_signal)
+genemetadata$mean %<>% mutate(.,gene_to_use = genemetadata$mean$gene_names %in% vec_genes_toAdd_signal)
 
 rownames(genemetadata$disp) = genemetadata$disp$gene %>% toupper
 
