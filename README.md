@@ -9,6 +9,7 @@ For each dataset we simulate a set of ligand-receptor (LR) interactions between 
 
 PCE and FC are decoupled. PCE-selected cells get a "+1" detection floor, and FC-scaled signal is added on top of it.
 
+The data folder used in the benchmark, along with the output folder can be found in ................
 ---
 
 ## Contact
@@ -121,8 +122,6 @@ Build the two containers (see [`sing_container/README.md`](sing_container/README
 ## Input data
 
 The datasets are not distributed with this repository. Each dataset needs its own folder under `data/`:
-
-The data folder used in the benchmark can be found in ................
 
 ```
 data/{dataset}/raw_counts.tsv      # genes × cells, raw counts; gene names as row names
