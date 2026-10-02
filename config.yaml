@@ -1,0 +1,49 @@
+# =============================================================================
+# Configuration for Cell-Cell Communication (CCC) Benchmark Workflow
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Dataset Settings
+# -----------------------------------------------------------------------------
+# List of datasets to be processed through the benchmark pipeline.
+datasets:
+  - "10x_immune_R1"
+  - "BD_wholeTranscriptome_P1"
+  - "10x"
+  - "VASAseq"
+  - "SMARTseq2"
+
+# Path to the curated Ligand-Receptor interaction database.
+# See 'data/InfoAbout_LR_database' for curation and formatting details.
+LR_database: "data/LR_database.tsv"
+
+# -----------------------------------------------------------------------------
+# 2. Semi-Simulation Parameters (Negative Binomial Sampling)
+# -----------------------------------------------------------------------------
+# These parameters define the signal intensity and sparsity of simulated interactions.
+semiSimulation:
+  # Fold Change (FC): Multiplier for the estimated NB mean to simulate signal.
+  FC: [1,2,3,5,7,10] 
+  
+  # Percentage of Cells Expressing (PCE): Target percentage of cells within 
+  # a population expressing the gene of interest.
+  PCE: [4,7,10,20,30,40] 
+  
+# Total number of Ligand-Receptor pairs to inflate for each 
+# CellType-CellType combination (e.g., Sender-Receiver).
+nLR_per_CTCTcomb: 30
+    
+# -----------------------------------------------------------------------------
+# 3. Method Selection
+# -----------------------------------------------------------------------------
+# CCC inference methods to be evaluated. Ensure a corresponding 'method_{name}.py' 
+# exists in the scripts directory.
+methods:
+  - "cellphonedbv5"
+  - "singlecellsignalR"
+  - "cellchat"
+  - "connectome"
+  - "natmi_specificity"
+  - "geometric_mean"
+  - "scseqcomm"
+  - "log2fc"

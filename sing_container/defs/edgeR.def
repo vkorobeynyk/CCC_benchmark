@@ -1,0 +1,13 @@
+Bootstrap: docker
+From: bioconductor/bioconductor_docker:RELEASE_3_16-R-4.2.3
+
+%post
+    apt-get update
+
+    # Install R packagers
+    R -e "install.packages('BiocManager')"
+    R -e "BiocManager::install(c('SingleCellExperiment','scater', 'ComplexHeatmap'))"
+
+    R -e "packages = c('dplyr','devtools','ggplot2','ggpubr','stringr','optparse','ComplexUpset','reshape2','plyr','DiagrammeR',
+    'DiagrammeRsvg','rsvg') ; install.packages(packages,dependencies = TRUE)"
+    R -e "BiocManager::install('edgeR')"

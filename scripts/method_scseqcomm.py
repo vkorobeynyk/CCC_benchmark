@@ -1,45 +1,61 @@
 import liana as li
 import scanpy as sc
 import pandas as pd
-# import all individual methods
 from liana.method import scseqcomm
 
-#############
-### INPUT ###
-#############
-inflated_normalized_counts_path = snakemake.input["inflated_normalized_counts"]
-cellmetadata_path = snakemake.input["metadata_processed"]
+# =============================================================================
+# 1. Load Input Data
+# =============================================================================
+# Paths are retrieved from the Snakemake workflow
+counts_path = snakemake.input["inflated_normalized_counts"]
+metadata_path = snakemake.input["metadata_processed"]
+db_path = snakemake.params["LR_database"]
 
-adata = sc.AnnData(pd.read_csv(inflated_normalized_counts_path, sep="\t").T)
+# Load normalized counts and initialize AnnData
+counts_df = pd.read_csv(counts_path, sep="\t").T
+adata = sc.AnnData(counts_df)
 adata.raw = adata.copy()
-cm = pd.read_csv(cellmetadata_path, sep="\t")
-adata.obs["Celltype"] = cm["Celltype"].values
 
-##############
-### OUTPUT ###
-##############
-significant_interactions_path = snakemake.output["significant_interactions"]
+# Map cell type metadata
+metadata = pd.read_csv(metadata_path, sep="\t")
+adata.obs["Celltype"] = metadata["Celltype"].values
 
-##############
-### Params ###
-##############
-LR_database_path = snakemake.params["LR_database"]
-LR_database = pd.read_csv(LR_database_path, sep=" ")
+# Load the curated interaction database using space separator
+lr_database = pd.read_csv(db_path, sep=" ")
 
-# run 
-x = scseqcomm(adata,
-            groupby='Celltype', 
-            resource=LR_database,
-            expr_prop=0,
-            min_cells = 0,
-            inplace = False,
-            verbose=True)
-            
-# select only CT1-CT2 interaction
-x = x[(x["source"] == "CT1") & (x["target"] == "CT2")]
-LRdata_df = pd.DataFrame({"ligand_receptor" : x["ligand"] + "_" + x["receptor"], "inter_score": x["inter_score"]})
-LRdata_df["significant"] = LRdata_df["inter_score"] > 0.8
-LRdata_df = LRdata_df.rename({"inter_score":"statistics"},axis=1)
-LRdata_df = LRdata_df.sort_values("statistics", ascending=False) # higher vaue, the more significant the interaction
+# =============================================================================
+# 2. Run scSeqComm (via LIANA)
+# =============================================================================
+results = scseqcomm(
+    adata, 
+    groupby='Celltype', 
+    resource=lr_database, 
+    expr_prop=0, 
+    min_cells=0, 
+    inplace=False, 
+    verbose=True
+)
 
-LRdata_df.to_csv(significant_interactions_path, sep = "\t")
+# =============================================================================
+# 3. Post-processing and Formatting
+# =============================================================================
+# Filter for specific Sender-Receiver interactions
+results = results[(results["source"] == "Sender") & (results["target"] == "Receiver")]
+
+# Format output dataframe
+output_df = pd.DataFrame({
+    "ligand_receptor": results["ligand_complex"] + "_" + results["receptor_complex"],
+    "statistics": results["inter_score"]
+})
+
+# Define significance (interaction score > 0.8)
+output_df["significant"] = output_df["statistics"] > 0.8
+
+# Sort results: higher scores (more significant) appear first
+output_df = output_df.sort_values("statistics", ascending=False)
+
+# =============================================================================
+# 4. Save Results
+# =============================================================================
+output_path = snakemake.output["significant_interactions"]
+output_df.to_csv(output_path, sep="\t", index=False)
