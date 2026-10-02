@@ -17,7 +17,7 @@ Vladyslav Korobeynyk, Brain Research Institute, University of Zurich (Jessberger
 Questions and bug reports: please open a [GitHub issue](https://github.com/vkorobeynyk/CCC_benchmark/issues).
 
 ## Generative AI statement
-Generative AI was used throuhout this entire benchmark to make code nicer to read and more efficient. The entire logic of the benchmark was created by myself and I assume responsability of the content within this repo.
+Generative AI was used throughout this entire benchmark to make code nicer to read and more efficient. The entire logic of the benchmark was created by myself and I assume responsability of the content within this repo.
 
 ## Table of contents
 
