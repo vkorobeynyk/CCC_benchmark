@@ -110,7 +110,7 @@ The final `all` rule calls `singularity exec` directly, so a `singularity` comma
 ## Installation
 
 ```bash
-git clone https://github.com/vkorobeynyk/CCC_benchmark.git
+git clone git@github.com:vkorobeynyk/CCC_benchmark.git
 cd CCC_benchmark
 ```
 
