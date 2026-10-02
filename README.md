@@ -13,7 +13,7 @@ PCE and FC are decoupled. PCE-selected cells get a "+1" detection floor, and FC-
 
 ## Contact
 
-Vladyslav Korobeynyk, Brain Research Institute, University of Zurich (Jessberger lab)
+Vladyslav Korobeynyk, HIFO / DMLS, University of Zurich (Jessberger lab / Mark D. Robinson lab)
 Questions and bug reports: please open a [GitHub issue](https://github.com/vkorobeynyk/CCC_benchmark/issues).
 
 ## Generative AI statement
