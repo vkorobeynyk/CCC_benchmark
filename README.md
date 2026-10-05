@@ -1,5 +1,7 @@
 # CCC_benchmark
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A Snakemake pipeline for benchmarking **cell-cell communication (CCC) inference methods** on single-cell RNA-seq data with a **semi-simulation** framework.
 
 For each dataset we simulate a set of ligand-receptor (LR) interactions between a *Sender* and a *Receiver* cell type. The pipeline then runs each CCC method on the modified data and scores how well it recovers that ground truth. Two parameters set how strong the simulated signal is:
@@ -34,6 +36,7 @@ Generative AI was used throughout this entire benchmark to make code nicer to re
 - [Metrics](#metrics)
 - [Adding a new method](#adding-a-new-method)
 - [Adding a new dataset](#adding-a-new-dataset)
+- [License](#license)
 
 ---
 
@@ -251,3 +254,9 @@ If the method needs packages that aren't in `lianaPlus.sif`, add them to `defs/l
 2. Add `<name>` to `datasets` in `config.yaml`.
 
 ---
+
+## License
+
+This project is released under the [MIT License](LICENSE). © 2026 Vladyslav Korobeynyk.
+
+The CCC methods, LR databases and datasets used by the pipeline are distributed under their own licenses; please refer to the respective sources.
