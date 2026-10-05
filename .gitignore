@@ -1,4 +1,8 @@
-data
+data/*
+!data/LR_database.tsv
+!data/InfoAbout_LR_database.txt
+!data/LR_database_entirecellhponedb.tsv
+!data/download_Datasets.R
 output
 log
 sing_container/*.sif
