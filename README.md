@@ -1,6 +1,6 @@
 # CCC_benchmark
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 A Snakemake pipeline for benchmarking **cell-cell communication (CCC) inference methods** on single-cell RNA-seq data with a **semi-simulation** framework.
 
@@ -257,6 +257,8 @@ If the method needs packages that aren't in `lianaPlus.sif`, add them to `defs/l
 
 ## License
 
-This project is released under the [MIT License](LICENSE). © 2026 Vladyslav Korobeynyk.
+Copyright (C) 2026 Vladyslav Korobeynyk
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE](LICENSE) file for the full text of the GNU General Public License v3.0.
 
 The CCC methods, LR databases and datasets used by the pipeline are distributed under their own licenses; please refer to the respective sources.
