@@ -15,7 +15,7 @@ rule all:
         visualization = directory("output/results")
     shell:
         """
-        singularity exec --no-home sing_container/edgeR.sif \
+        singularity exec --no-home --bind "$PWD" --pwd "$PWD" sing_container/edgeR.sif \
         Rscript scripts/visualization.R \
             --config.yaml config.yaml \
             --path_output_dir output \
