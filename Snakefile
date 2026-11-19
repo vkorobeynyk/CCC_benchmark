@@ -109,6 +109,44 @@ rule run_methods:
         "scripts/method_{wildcards.method}.py"
 
 # =============================================================================
+# STEP 4b: BASELINE (NO SIGNAL ADDED)
+# =============================================================================
+# Runs every method on the original (non-inflated) counts with the same cell
+# metadata. The semi-simulation does not change cell labels, so one baseline per
+# dataset x method is enough. Non-simulated interactions that become significant
+# only after signal injection (and do not share a gene with a simulated pair)
+# are counted as false positives in the metric step.
+# Input/output key names match the original rules so the same scripts are reused.
+rule run_baseline_normalization:
+    threads: 1
+    resources:
+        mem_mb = 10000
+    input:
+        inflated_counts = "data/processed/{dataset}/counts_{dataset}_processed.tsv"  # original counts, no signal
+    output:
+        inflated_normalized_counts = "output/{dataset}_baseline/sc_baseline_normalized_counts.tsv"
+    container:
+        "sing_container/edgeR.sif"
+    script:
+        "scripts/processing_normalization.R"
+
+rule run_methods_baseline:
+    threads: 1
+    resources:
+        mem_mb = 10000
+    input:
+        inflated_normalized_counts = "output/{dataset}_baseline/sc_baseline_normalized_counts.tsv",
+        metadata_processed = "data/processed/{dataset}/metadata_{dataset}_processed.tsv"
+    output:
+        significant_interactions = "output/{dataset}/{method}/baseline/significant_interactions_baseline.csv"
+    params:
+        LR_database = config["LR_database"]
+    container:
+        "sing_container/lianaPlus.sif"
+    script:
+        "scripts/method_{wildcards.method}.py"
+
+# =============================================================================
 # STEP 5: METRIC CALCULATION
 # =============================================================================
 # Calculates F1 scores and ranking performance across all datasets and methods.
@@ -126,6 +164,11 @@ rule run_metric_f1score_rankingLRgenes:
         ),
         genemetadata = expand(
             "data/processed/{dataset}/genemetadata.RDS",
+            dataset = config["datasets"]
+        ),
+        baseline_interactions = expand(
+            "output/{dataset}/{method}/baseline/significant_interactions_baseline.csv",
+            method = config["methods"],
             dataset = config["datasets"]
         )
     output:

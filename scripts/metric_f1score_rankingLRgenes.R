@@ -24,6 +24,13 @@ datasets = config$datasets %>% unlist()
 FC_values = config$semiSimulation$FC %>% unlist() %>% as.double()
 PCE_values = config$semiSimulation$PCE %>% unlist() %>% as.double()
 
+#' Robust check of the "significant" column written by the Python method scripts.
+#' pandas writes True/False; depending on R version read.table may keep these as
+#' strings ("True") or convert them to logical (TRUE), so accept both.
+is_significant = function(x) {
+  as.character(x) %in% c("True", "TRUE")
+}
+
 #' Compute both detection rate and rank quality
 #'
 #' @param df           Method's full output table for one FC/PCE run (pre-significance-filter)
@@ -76,9 +83,22 @@ for (dataset in datasets) {
   genemetadata = readRDS(genemetadata_path)
   
   simulated_interactions_lst = genemetadata$simulated_interactions_lst
-  
+
+  # All genes (ligands, receptors and complex subunits) of the simulated pairs.
+  # Non-simulated pairs sharing any of these genes are expected to change after
+  # signal injection and are therefore not counted as false positives.
+  sim_pairs = simulated_interactions_lst$ligand_receptor
+  sim_genes = unique(unlist(str_split(sim_pairs, "_")))
+
   for (method in methods) {
-    
+
+    # Baseline run: same method and cell labels, original counts (no signal added)
+    baseline_path = file.path("output", dataset, method, "baseline", "significant_interactions_baseline.csv")
+    baseline_df = read.table(baseline_path, header = TRUE, sep = "\t")
+    baseline_sig = baseline_df %>%
+      dplyr::filter(is_significant(significant)) %>%
+      pull(ligand_receptor)
+
     # Iterate over parameter combinations using a grid
     params_grid = expand.grid(FC = FC_values, PCE = PCE_values)
     
@@ -98,7 +118,7 @@ for (dataset in datasets) {
       
       # Extract interactions flagged as significant
       significant_detected = returned_interactions_df %>% 
-        dplyr::filter(significant == "True") %>% 
+        dplyr::filter(is_significant(significant)) %>%
         pull(ligand_receptor)
       
       # ---------------------------------------------------------------------
@@ -109,8 +129,24 @@ for (dataset in datasets) {
       perc_significantInteractions_among_simulated = mean(simulated_interactions_lst$ligand_receptor %in% significant_detected) * 100
       
       tp = sum(significant_detected %in% simulated_interactions_lst$ligand_receptor)
-      fp = length(significant_detected) - tp
       fn = length(simulated_interactions_lst$ligand_receptor) - tp
+
+      # Differential classification of non-simulated significant interactions,
+      # by comparison with the baseline run (no signal added):
+      #   pre_existing - already significant without signal (may be real biology)
+      #   related      - new after injection, but share a gene with a simulated pair
+      #   fp_diff      - new after injection and unrelated -> false positives
+      #   lost         - significant in baseline, no longer significant after injection
+      non_sim      = setdiff(significant_detected, sim_pairs)
+      pre_existing = intersect(non_sim, baseline_sig)
+      new_nonsim   = setdiff(non_sim, baseline_sig)
+      is_related   = vapply(str_split(new_nonsim, "_"), function(g) any(g %in% sim_genes), logical(1))
+      related      = new_nonsim[is_related]
+      fp_diff      = new_nonsim[!is_related]
+      lost         = setdiff(baseline_sig, significant_detected)
+
+      n_additional = length(significant_detected) - tp  # previous FP definition (all non-simulated significant)
+      fp = length(fp_diff)
       
       if (tp + fp > 0) {
         precision = tp / (tp + fp)
@@ -141,6 +177,11 @@ for (dataset in datasets) {
         TP = tp,
         FP = fp,
         FN = fn,
+        n_additional = n_additional,
+        n_pre_existing = length(pre_existing),
+        n_related = length(related),
+        n_lost = length(lost),
+        n_baseline_significant = length(baseline_sig),
         precision = precision %>% round(3),
         recall = recall %>% round(3),
         f1score = f1 %>% round(3),

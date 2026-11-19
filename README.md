@@ -11,6 +11,8 @@ For each dataset we simulate a set of ligand-receptor (LR) interactions between 
 
 PCE and FC are decoupled. PCE-selected cells get a "+1" detection floor, and FC-scaled signal is added on top of it.
 
+Each method is also run once per dataset on the original data, without any added signal (**baseline**). Comparing every signal run with its baseline separates the interactions caused by the injected signal from those already present in the data, which lets us count false positives (see [Metrics](#metrics)).
+
 The data folder used in the benchmark, along with the output folder can be found in ................
 ---
 
@@ -58,14 +60,20 @@ output/{dataset}_semiSimulation_NB/  inflated normalized counts
         ▼  4. run_methods                         (lianaPlus.sif) × method
 output/{dataset}/{method}/significant_interactions_FC_{FC}_PercCellsExpressing_{PCE}.csv
         │
-        ▼  5. run_metric_f1score_rankingLRgenes   (edgeR.sif)
+        │  4b. baseline (no signal), once per dataset:
+        │      run_baseline_normalization         (edgeR.sif)    original processed counts
+        │        → output/{dataset}_baseline/sc_baseline_normalized_counts.tsv
+        │      run_methods_baseline               (lianaPlus.sif) × method
+        │        → output/{dataset}/{method}/baseline/significant_interactions_baseline.csv
+        │
+        ▼  5. run_metric_f1score_rankingLRgenes   (edgeR.sif)    signal runs vs. baseline
 output/final_scores.RDS
         │
         ▼  all → scripts/visualization.R          (edgeR.sif)
 output/results/
 ```
 
-Every dataset is run over the full grid of `FC × PCE` values and every method listed in `config.yaml`.
+Every dataset is run over the full grid of `FC × PCE` values and every method listed in `config.yaml`. The baseline (step 4b) does not depend on FC or PCE, because the semi-simulation does not change cell labels, so it runs once per `dataset × method`. The baseline steps reuse `processing_normalization.R` and the `method_<name>.py` scripts unchanged.
 
 ---
 
@@ -199,6 +207,8 @@ Per-rule memory requirements are set in the `resources:` field of each rule in t
 | `data/processed/{dataset}/genemetadata.RDS` | edgeR means/dispersions, offsets, simulated LR pairs (ground truth), dataset summary statistics |
 | `output/{dataset}_semiSimulation_NB/` | inflated raw and normalized counts, realized PCE per gene, realized FC after simulation |
 | `output/{dataset}/{method}/significant_interactions_*.csv` | per-method results: `ligand_receptor`, `statistics`, `significant` (Sender → Receiver only, ranked from strongest to weakest) |
+| `output/{dataset}_baseline/sc_baseline_normalized_counts.tsv` | normalized original counts (no signal added) |
+| `output/{dataset}/{method}/baseline/significant_interactions_baseline.csv` | per-method results on the baseline, same format as above |
 | `output/final_scores.RDS` | nested list `[[dataset]][[method]][[run]]` of metric tables |
 | `output/results/` | diagnostic and benchmark figures |
 
@@ -223,15 +233,27 @@ All methods run through [LIANA+](https://github.com/saezlab/liana-py) using the 
 
 ## Metrics
 
-`scripts/metric_f1score_rankingLRgenes.R` compares each method's output with the simulated ground truth:
+`scripts/metric_f1score_rankingLRgenes.R` compares each method's output with the simulated ground truth and with the method's own baseline run (no signal added):
 
-- **TP / FP / FN, precision, recall, F1 score**, computed on interactions flagged as `significant`
+- **TP**: simulated interactions called significant. **FN**: simulated interactions not called significant.
+- Every other significant interaction falls into exactly one of three groups:
+  - **pre-existing**: also significant in the baseline. Present in the data regardless of the simulation, so it may be real biology; not counted as FP.
+  - **related**: not significant in the baseline, but shares a ligand, receptor or complex subunit with a simulated pair. An expected side effect of inflating those genes; not counted as FP.
+  - **FP**: not significant in the baseline and shares no gene with any simulated pair, so it is a spurious hit caused by the injection.
+- **Precision, recall, F1 score**: computed from TP, FN and the FP defined above. F1 therefore measures how well a method recovers the injected signal without the injection creating unrelated new hits; it does not penalize interactions already present in the data.
+- **Additional counts**, stored per run:
+  - `n_additional`: all significant non-simulated interactions (`n_pre_existing + n_related + FP`); this was the FP definition before baseline runs were added
+  - `n_pre_existing`, `n_related`: sizes of the groups above
+  - `n_lost`: significant in the baseline but no longer significant after injection
+  - `n_baseline_significant`: total significant interactions in the baseline run
 - **% significant among simulated**: the share of planted interactions that the method called significant
 - **Detection rate**: the fraction of planted interactions that appear anywhere in the method's output
 - **Conditional normalized rank**: the mean normalized rank (0 = top, 1 = bottom) of planted interactions, computed **only over those detected**
 - **Penalized normalized rank**: the same, but undetected interactions are given the worst rank
 
 Ranking quality is reported as two separate numbers (detection rate and conditional rank) rather than one blended score.
+
+Interactions are matched by their `ligand_receptor` ID (all outputs are Sender → Receiver only). Genes are obtained by splitting the ID on `_`, so ligand and receptor complexes are split into their subunits.
 
 ---
 
@@ -245,6 +267,8 @@ Ranking quality is reported as two separate numbers (detection rate and conditio
 
    Sort rows from strongest to weakest interaction.
 3. Add `<name>` to `methods` in `config.yaml`.
+
+The same script is used for the baseline run (`run_methods_baseline`), so it must only rely on the Snakemake `input`, `params` and `output` names above and must not read the `FC` / `PCE` wildcards.
 
 If the method needs packages that aren't in `lianaPlus.sif`, add them to `defs/lianaPlus.def` and rebuild, or give the method its own container in the `Snakefile`.
 
