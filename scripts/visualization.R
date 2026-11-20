@@ -280,6 +280,9 @@ for (dataset in datasets) {
   # --- F1-score and normalized-rank summary plots ---
   summary_plots = build_f1_and_rank_plots(statistics_results_lst_recallprecision_plot[[dataset]])
   
+  # --- Comparison with baseline runs (no signal added) ---
+  baseline_plots = build_baseline_plots(metric_results[[dataset]], dataset)
+  
   # --- Save all plots for this dataset ---
   pdf(file.path(path_results_dir, paste0(dataset, "_results_plots.pdf")), width = 15, height = 7)
   #wrap_plots(lst_precision_recall_byPCE, guides = "collect") %>% print
@@ -294,6 +297,9 @@ for (dataset in datasets) {
   
   lst_upset_plots_FC$FC_1$PCE_20  %>% print
   lst_upset_plots_FC$FC_7$PCE_20 %>% print
+  
+  baseline_plots$fate        %>% print
+  baseline_plots$composition %>% print
   
   upset1 %>% print
   upset2 %>% print

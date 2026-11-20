@@ -6,7 +6,7 @@ suppressMessages({
   library(yaml)
 })
 
-# =============================================================================
+
 # 1. Environment and Parameter Setup
 # =============================================================================
 if (is.null(snakemake@input[["significant_interactions"]]) | 
