@@ -145,6 +145,20 @@ for (dataset in datasets) {
       fp_diff      = new_nonsim[!is_related]
       lost         = setdiff(baseline_sig, significant_detected)
 
+      # Split lost interactions. The semi-simulation wipes the native expression of
+      # simulated genes in Sender/Receiver before re-sampling them in PCE% of cells,
+      # so baseline interactions using those genes are expected to be lost:
+      #   lost_simulated - simulated pairs significant in baseline, not after injection
+      #   lost_related   - non-simulated pairs sharing a gene with a simulated pair
+      #   lost_unrelated - no shared gene -> would indicate a global effect
+      #                    (e.g. normalization or cross-pair score scaling)
+      # n_lost = n_lost_simulated + n_lost_related + n_lost_unrelated
+      lost_simulated = intersect(lost, sim_pairs)
+      lost_nonsim    = setdiff(lost, sim_pairs)
+      is_lost_rel    = vapply(str_split(lost_nonsim, "_"), function(g) any(g %in% sim_genes), logical(1))
+      lost_related   = lost_nonsim[is_lost_rel]
+      lost_unrelated = lost_nonsim[!is_lost_rel]
+
       n_additional = length(significant_detected) - tp  # previous FP definition (all non-simulated significant)
       fp = length(fp_diff)
       
@@ -181,6 +195,9 @@ for (dataset in datasets) {
         n_pre_existing = length(pre_existing),
         n_related = length(related),
         n_lost = length(lost),
+        n_lost_simulated = length(lost_simulated),
+        n_lost_related = length(lost_related),
+        n_lost_unrelated = length(lost_unrelated),
         n_baseline_significant = length(baseline_sig),
         precision = precision %>% round(3),
         recall = recall %>% round(3),

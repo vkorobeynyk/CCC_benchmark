@@ -244,7 +244,7 @@ All methods run through [LIANA+](https://github.com/saezlab/liana-py) using the 
 - **Additional counts**, stored per run:
   - `n_additional`: all significant non-simulated interactions (`n_pre_existing + n_related + FP`); this was the FP definition before baseline runs were added
   - `n_pre_existing`, `n_related`: sizes of the groups above
-  - `n_lost`: significant in the baseline but no longer significant after injection
+  - `n_lost`: significant in the baseline but no longer significant after signal addition, split into `n_lost_simulated` (simulated pairs), `n_lost_related` (share a gene with a simulated pair) and `n_lost_unrelated` (no shared gene). Because the semi-simulation removes the native expression of the simulated genes in Sender/Receiver before re-sampling them in PCE% of cells, simulated and related losses are expected; unrelated losses would indicate a global effect, such as normalization or cross-pair score scaling.
   - `n_baseline_significant`: total significant interactions in the baseline run
 - **% significant among simulated**: the share of planted interactions that the method called significant
 - **Detection rate**: the fraction of planted interactions that appear anywhere in the method's output
