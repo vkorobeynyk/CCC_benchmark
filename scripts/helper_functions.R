@@ -805,9 +805,9 @@ build_f1_and_rank_plots = function(stats_df) {
       strip.text = element_text(size = 14)
     )
   
-  p3 = ggplot(stats_df, aes(x = FC, y = normalizedRank_simulated_among_significant, color = method)) +
+  p3 = ggplot(stats_df, aes(x = FC, y = normalizedRank_conditional, color = method)) +
     geom_point() + geom_line() + facet_grid(~PCE) + ggtitle("Faceted by PCE") + theme_light()+
-    ylab("Mean normalized rank of simulated interactions") +
+    ylab("Mean normalized rank of detected simulated interactions") +
     theme(
       plot.title   = element_text(size = 14),
       axis.title.x = element_text(size = 12),
