@@ -58,6 +58,11 @@ simulated_interactions_lst = genemetadata$simulated_interactions_lst
 # =============================================================================
 # 4. Semi-Simulation
 # =============================================================================
+# Fixed seed per parameter combination, so that the choice of PCE-selected
+# cells and the NB sampling in semi_simulate() are reproducible across reruns.
+# Unique for PCE < 1000.
+set.seed(as.integer(FC * 1000 + PCE))
+
 # Perform NB sampling to inflate counts for selected genes
 semi_simulation_out = semi_simulate(
   counts = counts,

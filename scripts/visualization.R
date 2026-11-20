@@ -285,8 +285,8 @@ for (dataset in datasets) {
   
   # --- Save all plots for this dataset ---
   pdf(file.path(path_results_dir, paste0(dataset, "_results_plots.pdf")), width = 15, height = 7)
-  #wrap_plots(lst_precision_recall_byPCE, guides = "collect") %>% print
-  #wrap_plots(lst_precision_recall_byFC, guides = "collect")  %>% print
+  wrap_plots(lst_precision_recall_byPCE, guides = "collect") %>% print
+  wrap_plots(lst_precision_recall_byFC, guides = "collect")  %>% print
   summary_plots$f1_by_FC   %>% print
   summary_plots$f1_by_PCE  %>% print
   summary_plots$rank_by_PCE %>% print
