@@ -29,6 +29,8 @@
 #'                        used later as the baseline for effective-FC calculations
 semi_simulate = function(counts, simulated_interactions_lst, genemetadata, metadata, FC, PCE) {
   
+  
+  set.seed(1)
   means_perCT = genemetadata$mean
   offset = genemetadata$edgeR_offsets$edgeR_offset
   

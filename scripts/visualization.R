@@ -264,8 +264,8 @@ for (dataset in datasets) {
   intersect_significant_simulated_interactions[rowSums(intersect_significant_simulated_interactions) == 0,]
   
   # --- Precision-recall curves, faceted by PCE and by FC ---
-  #lst_precision_recall_byPCE = build_precision_recall_plots(statistics_results_lst_recallprecision_plot[[dataset]], "PCE")
-  #lst_precision_recall_byFC  = build_precision_recall_plots(statistics_results_lst_recallprecision_plot[[dataset]], "FC")
+  lst_precision_recall_byPCE = build_precision_recall_plots(statistics_results_lst_recallprecision_plot[[dataset]], "PCE")
+  lst_precision_recall_byFC  = build_precision_recall_plots(statistics_results_lst_recallprecision_plot[[dataset]], "FC")
   
   # --- Report rank of simulated interactions in the output of each method
   # --- normalizedRank_penalized -> Normalized rank. if LR is not present in output, then it takes the worst rank
