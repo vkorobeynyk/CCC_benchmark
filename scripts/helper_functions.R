@@ -770,11 +770,15 @@ build_precision_recall_plots = function(df, facet_var) {
       geom_line() +
       theme_light() +
       scale_x_continuous(labels = scales::number_format(accuracy = 0.01)) +
-      scale_y_continuous(labels = scales::number_format(accuracy = 0.01)) +
-      theme(legend.title = element_text(size = 7), legend.text = element_text(size = 7),
-            axis.text.x = element_text(size = 8), axis.text.y = element_text(size = 8),
-            axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8),
-            plot.title = element_text(size = 10)) +
+      scale_y_continuous(labels = scales::number_format(accuracy = 0.01), limits = c(0, 1)) +
+      theme(
+        plot.title   = element_text(size = 14),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        legend.text  = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        axis.text    = element_text(size = 12)
+      )+
       ggtitle(paste0(facet_var, "_", val))
   })
   

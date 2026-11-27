@@ -331,7 +331,8 @@ method_cols = setNames(viridis(8, option = "D"), unique(x$method))
 
 ht = build_relative_f1_stacked_heatmap(mat_rel, method_cols)
 
-pdf(file.path(path_results_dir, "results_acrossdatasets_plots.pdf"), width = 13, height = 10)
+png(file.path(path_results_dir, "results_acrossdatasets_plots.png"),
+    width = 13, height = 10, units = "in", res = 300)
 draw(ht, annotation_legend_list = list(
   Legend(
     labels     = names(method_cols),
@@ -345,168 +346,124 @@ draw(ht, annotation_legend_list = list(
 ))
 dev.off()
 
-
-
 # =============================================================================
-# 6. Create recommendation hierarchical tree
+# 7. Method consensus rank by technology and expression tier
+#
+# 1. For each dataset x PCE tier, every method gets its mean score over all FC
+#    and PCE values in that tier and is ranked within the dataset (1 = best,
+#    ties averaged). A method that retrieves nothing gets the last rank; tiers
+#    where no method retrieves anything are left unranked (NA).
+# 2. Per technology class x tier, ranks are averaged across datasets, and the
+#    methods are ranked again on that mean -> consensus rank (1 = best).
+#   cell colour/number = consensus rank
+#   brackets           = worst rank of the method in any single dataset
+#   "–"                = the method retrieved nothing in any dataset of that class
 # =============================================================================
+rank_metric = "recall"   # "recall" or "f1score" (precision is ~1 after baseline correction)
+n_methods   = length(methods)
 
-suppressMessages({
-  library(dplyr)
-  library(stringr)
-  library(DiagrammeR)
-  library(DiagrammeRsvg)
-  library(rsvg)
-})
+technology_class = c(SMARTseq2 = "Plate-based", VASAseq = "Plate-based",
+                     `10x` = "Droplet-based", `10x_immune_R1` = "Droplet-based",
+                     BD_wholeTranscriptome_P1 = "Droplet-based")
 
-# Input data (per-dataset FC-threshold -> expression-signal-fraction results)
-df_smartseq2 = data.frame(
-  dataset    = "SMARTseq2",
-  PCE        = c(7,7,20,20,40,40),
-  Expression = c("< 0.349%","> 0.349%","< 0.370%","> 0.370%","< 0.421%","> 0.421%") ,
-  Method     = c("-","log2fc",
-                 "geometric_mean|natmi_specificity|cellphonedb","log2fc|geometric_mean",
-                 "cellchat","cellchat")
-)
-# (fix: keep Expression labels simple and explicit instead of the regex trick above)
-df_smartseq2$Expression = c("< 0.349%","> 0.349%","< 0.370%","> 0.370%","< 0.421%","> 0.421%")
-
-df_10x = data.frame(
-  dataset    = "10x",
-  PCE        = c(7,7,20,20,40,40),
-  Expression = c("< 0.468%","> 0.468%","< 0.576%","> 0.576%","< 0.755%","> 0.755%"),
-  Method     = c("geometric_mean","geometric_mean",
-                 "scseqcomm|singlecellsignalR","scseqcomm|singlecellsignalR",
-                 "scseqcomm|singlecellsignalR|cellchat","scseqcomm|cellchat|singlecellsignalR")
-)
-
-df_vasaseq = data.frame(
-  dataset    = "VASAseq",
-  PCE        = c(7,7,20,20,40,40),
-  Expression = c("< 1.42%","> 1.42%","< 1.73%","> 1.73%","< 2.23%","> 2.23%"),
-  Method     = c("-","log2fc",
-                 "log2fc","log2fc",
-                 "singlecellsignalR","log2fc|singlecellsignalR|scseqcomm")
-)
-
-df_BD = data.frame(
-  dataset    = "BDRhapsody",
-  PCE        = c(7,7,20,20,40,40),
-  Expression = c("< 1.55%","> 1.55%","< 1.79%","> 1.79%","< 2.22%","> 2.22%"),
-  Method     = c("geometric_mean","geometric_mean|singlecellsignalR",
-                 "singlecellsignalR|geometric_mean|cellphonedb","singlecellsignalR",
-                 "singlecellsignalR|cellchat","singlecellsignalR|cellchat|scseqcomm|geometric_mean")
-)
-
-df_10x_immune_R1 = data.frame(
-  dataset    = "10x_immune_R1",
-  PCE        = c(7,7,20,20,40,40),
-  Expression = c("< 1.78%","> 1.78%","< 2.04%","> 2.04%","< 2.42%","> 2.42%"),
-  Method     = c("singlecellsignalR|geometric_mean","singlecellsignalR",
-                 "scseqcomm|singlecellsignalR","scseqcomm|singlecellsignalR",
-                 "scseqcomm|cellchat","scseqcomm|cellchat")
-)
-
-all_datasets = list(
-  SMARTseq2      = df_smartseq2,
-  `10x`          = df_10x,
-  VASAseq        = df_vasaseq,
-  BDRhapsody     = df_BD,
-  `10x_immune_R1` = df_10x_immune_R1
-)
-
-# Helper functions
-
-#' Check whether two "method1|method2|..." strings represent the same set of
-#' methods, ignoring order -- used to collapse a PCE branch into a single
-#' "Any Expr" leaf when the winning method(s) don't actually change across
-#' the expression threshold
-same_method_set = function(m1, m2) {
-  setequal(str_split(m1, "\\|")[[1]], str_split(m2, "\\|")[[1]])
+pce_tier = function(pce) {
+  cut(pce, breaks = c(-Inf, 9, 25, Inf),
+      labels = c("Low (4-7%)", "Medium (10-20%)", "High (30-40%)"))
 }
 
-#' Convert a "method1|method2|..." string into a Graphviz-friendly multi-line
-#' label
-method_label = function(m) {
-  str_replace_all(m, "\\|", "\\\\n")
-}
+rank_df = do.call(rbind.data.frame, statistics_results_lst_recallprecision_plot) %>%
+  dplyr::mutate(PCE   = as.numeric(as.character(PCE)),
+                FC    = as.numeric(as.character(FC)),
+                score = .data[[rank_metric]],
+                tier  = pce_tier(PCE),
+                technology = technology_class[dataset]) %>%
+  # mean score per dataset x tier x method
+  dplyr::group_by(technology, dataset, tier, method) %>%
+  dplyr::summarise(score = mean(score, na.rm = TRUE), .groups = "drop") %>%
+  # rank within dataset x tier
+  dplyr::group_by(technology, dataset, tier) %>%
+  dplyr::mutate(rank = dplyr::case_when(
+    all(score == 0) ~ NA_real_,                                  # nobody retrieves anything: unranked
+    score == 0      ~ as.numeric(n_methods),                     # retrieved nothing: last place
+    TRUE            ~ rank(-score, ties.method = "average"))) %>%
+  dplyr::ungroup()
 
-#' Sanitize a dataset name into a valid Graphviz graph/node ID
-safe_id = function(x) {
-  gsub("[^A-Za-z0-9]", "_", x)
-}
+rank_summary = rank_df %>%
+  dplyr::group_by(technology, tier, method) %>%
+  dplyr::summarise(mean_rank   = mean(rank, na.rm = TRUE),
+                   worst_rank  = suppressWarnings(max(rank, na.rm = TRUE)),
+                   n_datasets  = sum(!is.na(rank)),
+                   n_retrieved = sum(score > 0),
+                   .groups = "drop") %>%
+  dplyr::mutate(mean_rank  = ifelse(n_datasets == 0, NA, mean_rank),
+                worst_rank = ifelse(n_datasets == 0, NA, worst_rank)) %>%
+  # consensus rank within each technology x tier (methods that retrieved nothing are not ranked)
+  dplyr::group_by(technology, tier) %>%
+  dplyr::mutate(consensus_rank = rank(ifelse(n_retrieved == 0, NA, mean_rank),
+                                      ties.method = "min", na.last = "keep")) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(column = paste(technology, tier, sep = " | "))
 
-# Build the DOT source for one dataset's tree
-build_tree_dot = function(dataset_name, df) {
-  
-  graph_id = paste0("selection_tree_", safe_id(dataset_name))
-  pces = sort(unique(df$PCE))
-  
-  lines = c(
-    sprintf("digraph %s {", graph_id),
-    # tighter overall spacing between ranks/nodes, smaller margins
-    '  graph [layout = dot, ranksep = 0.25, nodesep = 0.15, bgcolor = "white", margin = 0]',
-    '  node [shape = box, fontname = Helvetica, style = filled, fillcolor = "white", ',
-    '        margin = "0.04,0.02", fixedsize = false]',
-    '  edge [color = "#566573", arrowhead = vee, fontname = Helvetica, fontsize = 8, penwidth = 0.8]',
-    "",
-    sprintf('  Root [label = "%s", fillcolor = "#AED6F1", style = "filled,bold", fontsize = 10, height = 0.25, width = 0.9]', dataset_name),
-    ""
-  )
-  
-  # --- PCE nodes (smaller, tighter) ---
-  lines = c(lines, '  node [fillcolor = "#FCF3CF", height = 0.22, width = 0.45, fontsize = 9]')
-  pce_ids = setNames(paste0("PCE_", pces), pces)
-  for (pce in pces) {
-    lines = c(lines, sprintf('  %s [label = "%s%%"]', pce_ids[[as.character(pce)]], pce))
-  }
-  lines = c(lines, "", '  node [fillcolor = "white", fontsize = 7, style = filled, height = 0.2]')
-  lines = c(lines, sprintf("  Root -> {%s}", paste(pce_ids, collapse = " ")), "")
-  
-  # --- Method leaves per PCE tier ---
-  leaf_counter = 0
-  for (pce in pces) {
-    rows = df %>% filter(PCE == pce)
-    row_low  = rows[1, ]
-    row_high = rows[2, ]
-    pid = pce_ids[[as.character(pce)]]
-    
-    leaf_counter = leaf_counter + 1
-    leaf_low_id = paste0("M_", leaf_counter)
-    lines = c(lines,
-              sprintf('  %s [label = "%s"]', leaf_low_id, method_label(row_low$Method)),
-              sprintf('  %s -> %s [label = "%s"]', pid, leaf_low_id, row_low$Expression)
-    )
-    
-    leaf_counter = leaf_counter + 1
-    leaf_high_id = paste0("M_", leaf_counter)
-    lines = c(lines,
-              sprintf('  %s [label = "%s"]', leaf_high_id, method_label(row_high$Method)),
-              sprintf('  %s -> %s [label = "%s"]', pid, leaf_high_id, row_high$Expression)
-    )
-  }
-  
-  lines = c(lines, "}")
-  paste(lines, collapse = "\n")
-}
+# --- matrices: methods x (technology | tier) ---
+col_order = as.vector(t(outer(c("Plate-based", "Droplet-based"), levels(rank_summary$tier),
+                              paste, sep = " | ")))
+mat_cons  = reshape2::acast(rank_summary, method ~ column, value.var = "consensus_rank")[, col_order]
+mat_mean  = reshape2::acast(rank_summary, method ~ column, value.var = "mean_rank")[, col_order]
+mat_worst = reshape2::acast(rank_summary, method ~ column, value.var = "worst_rank")[, col_order]
+mat_retr  = reshape2::acast(rank_summary, method ~ column, value.var = "n_retrieved")[, col_order]
 
-# Render each dataset's tree to its own standalone SVG
-output_dir = "output/results/decision_trees"
-if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+# order methods by average consensus rank (not retrieved = last place)
+mat_order    = mat_cons
+mat_order[is.na(mat_order)] = n_methods
+method_order = names(sort(rowMeans(mat_order)))
+mat_cons  = mat_cons[method_order, ]
+mat_mean  = mat_mean[method_order, ]
+mat_worst = mat_worst[method_order, ]
+mat_retr  = mat_retr[method_order, ]
 
-for (dataset_name in names(all_datasets)) {
-  df = all_datasets[[dataset_name]]
-  
-  dot_src = build_tree_dot(dataset_name, df)
-  graph = grViz(dot_src)
-  
-  svg_text = export_svg(graph)
-  svg_path = file.path(output_dir, paste0(dataset_name, ".svg"))
-  writeLines(svg_text, svg_path)
-  
-  # Optional: also export a quick PDF/PNG for preview
-  rsvg_pdf(charToRaw(svg_text), file = file.path(output_dir, paste0(dataset_name, ".pdf")))
-  
-  message("Built: ", svg_path)
-}
+# sequential blues; light end stays visibly blue so rank 8 is distinct from "not retrieved" (white)
+rank_cols = colorRamp2(c(1, (n_methods + 1) / 2, n_methods), c("#08306B", "#4292C6", "#C6DBEF"))
 
+col_split  = factor(sub(" \\|.*", "", colnames(mat_cons)), levels = c("Plate-based", "Droplet-based"))
+col_labels = sub(".*\\| ", "", colnames(mat_cons))
+
+ht_rank = Heatmap(
+  mat_cons,
+  name = "Consensus rank",
+  col = rank_cols,
+  na_col = "white",
+  cluster_rows = FALSE, cluster_columns = FALSE,
+  column_split = col_split,
+  column_labels = col_labels,
+  column_names_rot = 45,
+  column_title_gp = gpar(fontsize = 15, fontface = "bold"),
+  row_names_side = "left",
+  row_names_gp = gpar(fontsize = 14),
+  column_names_gp = gpar(fontsize = 13),
+  rect_gp = gpar(col = "grey85", lwd = 1),
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    if (is.na(mat_mean[i, j])) return(invisible(NULL))          # nobody retrieved anything in this column
+    if (mat_retr[i, j] == 0) {
+      grid.text("–", x, y, gp = gpar(fontsize = 13, col = "grey50"))
+    } else {
+      txt_col = ifelse(mat_cons[i, j] < (n_methods + 1) / 2, "white", "black")
+      grid.text(sprintf("%d\n(%g)", as.integer(mat_cons[i, j]), mat_worst[i, j]), x, y,
+                gp = gpar(fontsize = 13, col = txt_col))
+    }
+  },
+  heatmap_legend_param = list(title = "Consensus rank (1 = best)",
+                              at = seq_len(n_methods),
+                              color_bar = "discrete",
+                              direction = "horizontal", nrow = 1,
+                              title_position = "leftcenter",
+                              labels_gp = gpar(fontsize = 13),
+                              title_gp = gpar(fontsize = 13, fontface = "bold"),
+                              grid_height = unit(6, "mm"),
+                              grid_width  = unit(6, "mm"))
+)
+
+png(file.path(path_results_dir, "method_consensus_rank_heatmap.png"),
+    width = 14, height = 8, units = "in", res = 300)
+draw(ht_rank, heatmap_legend_side = "bottom",
+     column_title_gp = gpar(fontsize = 14))
+dev.off()
